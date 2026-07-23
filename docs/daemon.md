@@ -18,7 +18,16 @@ Direct mode remains the default. Daemon is opt-in.
 
 ## Configure
 
-`~/.ai-tts/config.json`:
+**CLI (preferred):**
+
+```bash
+ai-tts config set mode daemon     # sets mode + daemon.enabled
+ai-tts daemon --enable-config     # start server and enable in config
+ai-tts status                     # shows mode + daemon up/down
+ai-tts config set mode direct     # back to one-shot (after daemon-stop)
+```
+
+**Config file** (`~/.ai-tts/config.json`) equivalent:
 
 ```json
 {
@@ -65,7 +74,8 @@ ENABLE_DAEMON=1 ./install.sh Grok
 # Any OS
 ai-tts daemon --enable-config
 ai-tts daemon-ping
-ai-tts daemon-stop
+ai-tts status                 # "daemon": "up" | "down"
+ai-tts daemon-stop            # stop server; sets mode=direct
 
 # Windows launcher
 %USERPROFILE%\.ai-tts\bin\ai-tts.cmd daemon --enable-config
@@ -120,3 +130,4 @@ One line request, one line response (UTF-8 JSON) over TCP:
 | Background process | No | Yes |
 | Latency after Stop | Higher | Lower |
 | Best for | Occasional voice | Frequent `/tts` use |
+| Switch | `ai-tts config set mode direct` | `ai-tts config set mode daemon` + `daemon --enable-config` |

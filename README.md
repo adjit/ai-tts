@@ -113,9 +113,11 @@ python -m ai_tts doctor
 | Path | Purpose |
 |------|---------|
 | `bin/ai-tts` / `bin/ai-tts.cmd` | CLI launcher |
-| `lib/ai_tts/` | Python package (speak, daemon, hooks) |
-| `config.json` | Voice, mode (`direct`/`daemon`), daemon host/port |
+| `lib/ai_tts/` | Python package (speak, daemon, hooks, doctor, …) |
+| `config.json` | Voice, mode (`direct`/`daemon`), daemon host/port — prefer `ai-tts config` |
+| `env.sh` | PATH fragment (Unix); `source ~/.ai-tts/env.sh` |
 | `docs/` | Copied reference docs |
+| `claude-settings.hooks.snippet.json` | Claude hook merge helper (if Claude installed) |
 | `speak.ps1`, `common.ps1`, … | **Deprecated** PowerShell fallback (Windows only) |
 
 ### Grok (`~/.grok`)
@@ -192,7 +194,19 @@ Stop hook → ai-tts hook-stop → detach speak
 
 ## Configuration
 
-Edit `~/.ai-tts/config.json`:
+**Prefer the CLI** (writes `~/.ai-tts/config.json`):
+
+```bash
+ai-tts config                         # show effective settings
+ai-tts config set voice eve
+ai-tts config set language en
+ai-tts config set speed 1.1
+ai-tts config set mode direct         # or: daemon
+ai-tts voices                         # known voice ids
+ai-tts status                         # cwd on/off + daemon
+```
+
+Equivalent file (`~/.ai-tts/config.json` or `$AI_TTS_HOME/config.json`):
 
 ```json
 {
@@ -214,13 +228,13 @@ Edit `~/.ai-tts/config.json`:
 
 | Field | Meaning |
 |-------|---------|
-| `mode` | `direct` (default) or `daemon` |
+| `mode` | `direct` (default) or `daemon` — also `ai-tts config set mode …` |
 | `daemon.host` / `port` | TCP endpoint for the portable daemon |
 | `daemon.pipeName` | Legacy Windows named-pipe daemon only |
 | `daemon.autoStart` | If daemon is down, try to start it once |
 | `optimizeStreamingLatency` | `0`–`2` (higher = faster first audio, slight quality tradeoff) |
 
-Voices: [docs/voices.md](docs/voices.md) (`carina`, `eve`, `leo`, `ara`, …).
+Voices: [docs/voices.md](docs/voices.md) · daemon: [docs/daemon.md](docs/daemon.md).
 
 Re-install defaults:
 
@@ -241,10 +255,11 @@ VOICE=eve FORCE=1 ./install.sh Grok
 **Daemon mode**: warm Python process on localhost TCP; better for frequent `/tts` use.
 
 ```bash
-# Start (also sets mode=daemon in config)
+# Enable + start (or: ai-tts config set mode daemon && ai-tts daemon)
 ai-tts daemon --enable-config
 
 ai-tts daemon-ping
+ai-tts status         # "daemon": "up" | "down"
 ai-tts daemon-stop    # stops server and sets mode=direct
 ```
 
@@ -367,8 +382,8 @@ Install one of: `ffmpeg` (`ffplay`), `paplay`, or `aplay`.
 
 | Symptom | Fix |
 |---------|-----|
-| No speech | `ai-tts probe` — check `XAI_API_KEY` and players; try `ai-tts speak "test"` |
-| `command not found: ai-tts` | Use full path `~/.ai-tts/bin/ai-tts` or re-run installer |
+| No speech | `ai-tts doctor` — fix key/players/hooks; try `ai-tts speak "test"` |
+| `command not found: ai-tts` | `source ~/.ai-tts/env.sh` or full path `~/.ai-tts/bin/ai-tts`; re-run installer |
 | Slow after `<say>` appears | Turn end + process start. Use **daemon mode**; install `websockets` for streaming |
 | Daemon configured but silent | `ai-tts daemon-ping`; start with `ai-tts daemon --enable-config`; check `~/.ai-tts/daemon.log` |
 | Model never emits `<say>` | `/tts` must be ON; new session so SessionStart + rules load |

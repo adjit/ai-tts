@@ -1,6 +1,26 @@
 # xAI TTS voices
 
-Set the default in `~/.ai-tts/config.json`:
+## Prefer the CLI
+
+```bash
+ai-tts voices                          # known voice ids (offline list)
+ai-tts config set voice eve            # default voice in config.json
+ai-tts config set speed 1.1            # typically 0.7–1.5
+ai-tts speak --voice leo "Hello"       # one-shot override
+ai-tts status                          # shows current default voice
+```
+
+Windows (after install / PATH):
+
+```powershell
+ai-tts voices
+ai-tts config set voice carina
+ai-tts speak --voice carina "Hello"
+```
+
+## Config file (equivalent)
+
+Defaults live in `~/.ai-tts/config.json` (or `$AI_TTS_HOME/config.json`):
 
 ```json
 {
@@ -10,11 +30,10 @@ Set the default in `~/.ai-tts/config.json`:
 }
 ```
 
-Or one-shot:
+Prefer `ai-tts config set …` over hand-editing when possible.
 
-```powershell
-powershell -File $env:USERPROFILE\.ai-tts\speak.ps1 -Text "Hello" -Voice carina
-```
+> **Deprecated:** PowerShell `speak.ps1 -Voice …` is a Windows fallback only.
+> Use `ai-tts speak --voice …`. See [DEPRECATED_POWERSHELL.md](DEPRECATED_POWERSHELL.md).
 
 ## Common voices
 
@@ -32,7 +51,15 @@ powershell -File $env:USERPROFILE\.ai-tts\speak.ps1 -Text "Hello" -Voice carina
 | `orion` | Orion | male |
 | `atlas` | Atlas | male |
 
-List all voices (requires `XAI_API_KEY`):
+`ai-tts voices` prints this catalog offline. The live xAI catalog may grow over time.
+
+### Live catalog (optional, needs `XAI_API_KEY`)
+
+```bash
+# Example with curl
+curl -sS -H "Authorization: Bearer $XAI_API_KEY" \
+  https://api.x.ai/v1/tts/voices | jq .
+```
 
 ```powershell
 $k = $env:XAI_API_KEY

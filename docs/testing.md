@@ -10,6 +10,7 @@
 | TCP daemon | Real localhost sockets; synth mocked |
 | Live xAI API | Opt-in only (`RUN_LIVE_TTS=1`) |
 | Product path (probe / hooks / speak) | `scripts/smoke.sh` / `scripts/smoke.ps1` |
+| doctor / config / status / uninstall | Unit tests (`test_doctor`, `test_cli_config_status`, `test_uninstall`) |
 | Linux environment | Docker image + compose |
 | Full agent `/tts` → `<say>` → audio | **Manual** (Grok/Claude session) |
 
