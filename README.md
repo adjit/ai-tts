@@ -278,6 +278,8 @@ ai-tts/
 │   ├── common.ps1              # DEPRECATED
 │   └── daemon.ps1              # DEPRECATED named-pipe daemon
 ├── scripts/
+│   ├── run-tests.sh / .ps1     # unit suite (+ Docker / live)
+│   ├── smoke.sh / smoke.ps1    # product probe + hooks (+ optional speak)
 │   ├── daemon-start.ps1        # prefers Python; -LegacyNamedPipe DEPRECATED
 │   └── daemon-stop.ps1
 ├── grok/                       # packaging (skills/rules; PS hooks DEPRECATED)
@@ -286,17 +288,19 @@ ai-tts/
 │   ├── architecture.md
 │   ├── daemon.md
 │   ├── platforms.md
+│   ├── testing.md              # quality ladder + how to run tests
 │   ├── DEPRECATED_POWERSHELL.md
 │   └── voices.md
 └── examples/
-    └── manual-smoke.ps1
+    └── manual-smoke.ps1        # DEPRECATED → scripts/smoke.ps1
 ```
 
 ---
 
 ## Tests
 
-Unit tests mock the xAI API and never touch your real home directory.
+Unit tests mock the xAI API and never touch your real home directory.  
+Details and **definition of done**: [docs/testing.md](docs/testing.md).
 
 ```powershell
 # Windows local
@@ -304,15 +308,21 @@ Unit tests mock the xAI API and never touch your real home directory.
 
 # Linux container (independent of host OS)
 .\scripts\run-tests.ps1 -Docker
+
+# Product smoke (probe + hook-state; speak if XAI_API_KEY set)
+.\scripts\smoke.ps1
 ```
 
 ```bash
 # macOS / Linux local
-chmod +x scripts/run-tests.sh
+chmod +x scripts/run-tests.sh scripts/smoke.sh
 ./scripts/run-tests.sh
 
 # Linux container
 ./scripts/run-tests.sh --docker
+
+# Product smoke
+./scripts/smoke.sh
 ```
 
 ```bash

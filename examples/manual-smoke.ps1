@@ -1,22 +1,21 @@
-# Manual smoke tests (no agent harness required).
-# Usage: .\examples\manual-smoke.ps1
+# DEPRECATED — use the Python product smoke instead:
+#
+#   .\scripts\smoke.ps1
+#   .\scripts\smoke.ps1 -Speak          # requires XAI_API_KEY
+#
+# Or on macOS/Linux:
+#
+#   ./scripts/smoke.sh
+#   ./scripts/smoke.sh --speak
+#
+# This file previously called deprecated speak.ps1 / PowerShell hooks.
+# Kept as a pointer so old links do not break silently.
 
 $ErrorActionPreference = 'Stop'
-$speak = Join-Path $env:USERPROFILE '.ai-tts\speak.ps1'
-if (-not (Test-Path $speak)) {
-    $speak = Join-Path $PSScriptRoot '..\src\speak.ps1'
+$smoke = Join-Path $PSScriptRoot '..\scripts\smoke.ps1'
+if (-not (Test-Path -LiteralPath $smoke)) {
+    throw "Missing $smoke — run from the ai-tts repo checkout."
 }
-
-Write-Host "1) Direct speak..." -ForegroundColor Cyan
-& $speak -Text 'ai-tts smoke test. If you can hear this, the player works.' -Voice carina
-
-Write-Host "2) SessionStart payload (Grok)..." -ForegroundColor Cyan
-$state = Join-Path $env:USERPROFILE '.grok\hooks\tts-state.ps1'
-if (Test-Path $state) {
-    '{"cwd":"C:\\temp\\demo","sessionId":"smoke"}' | & powershell -NoProfile -ExecutionPolicy Bypass -File $state
-    Write-Host ""
-} else {
-    Write-Host "  (Grok hooks not installed)"
-}
-
-Write-Host "Done." -ForegroundColor Green
+Write-Host 'examples/manual-smoke.ps1 is deprecated; forwarding to scripts/smoke.ps1' -ForegroundColor Yellow
+& $smoke @args
+exit $LASTEXITCODE
