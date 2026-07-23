@@ -4,6 +4,8 @@
 
 When voice is on for a project directory, the agent ends each reply with a short `<say>...</say>` line. A **Stop hook** speaks it asynchronously (default voice: **Carina**) so the model never blocks on audio.
 
+Works on **Windows, macOS, and Linux** via a portable **Python 3.10+** runtime. Windows also keeps PowerShell helpers as a fallback.
+
 ```text
 You:  fix the flaky test
 Grok: [does the work, prints a normal reply]
@@ -25,10 +27,14 @@ Grok: [does the work, prints a normal reply]
 
 ## Requirements
 
-- **Windows (supported today):** PowerShell + winmm / System.Speech playback  
-- **macOS / Linux:** planned — see [docs/platforms.md](docs/platforms.md); `install.sh` is a scaffold only  
-- **`XAI_API_KEY`** set as a **User**/login environment variable (so detached hook processes can see it)  
-- **Grok Build** and/or **Claude Code**
+| | |
+|--|--|
+| **OS** | Windows, macOS, or Linux |
+| **Python** | **3.10+** (primary runtime) |
+| **API key** | `XAI_API_KEY` in the environment (User/login profile so detached hooks can see it) |
+| **Agent** | Grok Build and/or Claude Code |
+| **Optional** | `pip install --user 'websockets>=12.0'` for streaming TTS |
+| **Playback** | Windows: `winsound` (built-in). macOS: `afplay`. Linux: `ffplay` (ffmpeg), `paplay`, or `aplay` |
 
 ---
 
@@ -41,10 +47,11 @@ git clone <this-repo-url> ai-tts
 cd ai-tts
 .\install.ps1 -Target Grok -Voice carina -Force
 
-# Smoke-test (Python portable core)
 & "$env:USERPROFILE\.ai-tts\bin\ai-tts.cmd" probe
 & "$env:USERPROFILE\.ai-tts\bin\ai-tts.cmd" speak "Hello from Carina"
 ```
+
+Use `-LegacyPowerShellHooks` only if you want the old PowerShell hook scripts instead of Python.
 
 ### macOS / Linux
 
@@ -53,66 +60,110 @@ git clone <this-repo-url> ai-tts
 cd ai-tts
 chmod +x install.sh
 ./install.sh Grok
+# VOICE=eve FORCE=1 ./install.sh Both
 
 ~/.ai-tts/bin/ai-tts probe
 ~/.ai-tts/bin/ai-tts speak "Hello from Carina"
 ```
 
-Requires **Python 3.10+**. Optional streaming: `pip install --user 'websockets>=12.0'`.
+### After install (any OS)
 
-Then in Grok:
-
-1. **New session** (or `/hooks` → reload) so hooks load.
+1. **New agent session** (or reload hooks) so SessionStart/Stop load.
 2. Open a project directory.
 3. Run **`/tts`** → should report `TTS ON`.
-4. Ask anything; the reply should end with `<say>...</say>` and you should hear Carina.
+4. Ask anything; the reply should end with `<say>...</say>` and you should hear speech.
 
 Toggle off with `/tts` again. State is **per directory** and persists across sessions.
 
-Full multi-OS notes: [docs/platforms.md](docs/platforms.md).
+More detail: [docs/platforms.md](docs/platforms.md) · [docs/architecture.md](docs/architecture.md) · [docs/voices.md](docs/voices.md)
 
-### What Grok install drops
+---
+
+## CLI reference
+
+After install, the launcher is:
+
+- Windows: `%USERPROFILE%\.ai-tts\bin\ai-tts.cmd`
+- macOS/Linux: `~/.ai-tts/bin/ai-tts`
+
+```text
+ai-tts probe                          # players, config, API key, streaming
+ai-tts speak "Hello"                  # one-shot TTS + play
+ai-tts speak --transport rest "..."   # force REST (no WebSocket)
+ai-tts toggle --harness grok          # same as /tts for Grok
+ai-tts toggle --harness claude        # Claude marker root
+ai-tts daemon --enable-config         # optional low-latency TCP server
+ai-tts daemon-ping
+ai-tts daemon-stop
+ai-tts hook-state --harness grok      # used by SessionStart
+ai-tts hook-stop --harness grok       # used by Stop
+```
+
+From a repo checkout without installing:
+
+```bash
+export PYTHONPATH=src/python   # Windows: set PYTHONPATH=src\python
+python -m ai_tts probe
+```
+
+---
+
+## What install drops
+
+### Shared (`~/.ai-tts`)
 
 | Path | Purpose |
 |------|---------|
-| `~/.ai-tts/speak.ps1` | One-shot xAI TTS player (direct mode) |
-| `~/.ai-tts/speak-core.ps1` | Streaming WebSocket + REST + playback |
-| `~/.ai-tts/common.ps1` | Shared hook helpers + mode dispatch |
-| `~/.ai-tts/daemon.ps1` | Optional warm worker |
-| `~/.ai-tts/scripts/daemon-*.ps1` | Start/stop helpers |
-| `~/.ai-tts/config.json` | Voice, mode (`direct`/`daemon`), daemon options |
-| `~/.grok/hooks/tts.json` | Registers SessionStart + Stop |
-| `~/.grok/hooks/tts-state.ps1` | Injects ON/OFF into the model |
-| `~/.grok/hooks/tts-stop.ps1` | Speaks the last `<say>` block |
-| `~/.grok/skills/tts/SKILL.md` | `/tts` slash skill |
-| `~/.grok/rules/voice-tts.md` | Standing instructions for `<say>` lines |
-| `~/.grok/.tts-dirs/` | Per-directory on/off markers |
+| `bin/ai-tts` / `bin/ai-tts.cmd` | CLI launcher |
+| `lib/ai_tts/` | Python package (speak, daemon, hooks) |
+| `config.json` | Voice, mode (`direct`/`daemon`), daemon host/port |
+| `docs/` | Copied reference docs |
+| `speak.ps1`, `common.ps1`, … | Windows PowerShell **fallback** (kept by `install.ps1`) |
+
+### Grok (`~/.grok`)
+
+| Path | Purpose |
+|------|---------|
+| `hooks/tts.json` | SessionStart + Stop → `ai-tts hook-*` |
+| `skills/tts/SKILL.md` | `/tts` skill (`ai-tts toggle`) |
+| `rules/voice-tts.md` | Standing `<say>` instructions |
+| `.tts-dirs/` | Per-directory on/off markers |
+
+### Claude (`~/.claude`)
+
+Same idea with `--harness claude`. Hook command snippet is written to  
+`~/.ai-tts/claude-settings.hooks.snippet.json` for merging into `settings.json`.
+
+Claude markers (`~/.claude/.tts-dirs/`) are **independent** of Grok’s toggle.
 
 ---
 
 ## Claude Code (optional)
 
+**Windows**
+
 ```powershell
-.\install.ps1 -Target Claude -Voice carina -MergeClaudeSettings
-# or both harnesses:
-.\install.ps1 -Target Both -Voice carina -MergeClaudeSettings
+.\install.ps1 -Target Claude -Voice carina
+# or both:
+.\install.ps1 -Target Both -Voice carina
 ```
 
-`-MergeClaudeSettings` merges SessionStart/Stop hook entries into `~/.claude/settings.json` (creates a timestamped `.bak-ai-tts-*` first).
+**macOS / Linux**
 
-Without the switch, install still copies scripts and writes a ready-to-paste snippet to:
+```bash
+./install.sh Claude
+# or
+./install.sh Both
+```
 
-`%USERPROFILE%\.ai-tts\claude-settings.hooks.snippet.json`
-
-Also ensure the agent sees the rule text (`claude/rules/voice-tts.md` is copied to `~/.claude/rules/`).
-
-Claude markers live under `~/.claude/.tts-dirs/` — **independent** of Grok’s toggle.
+Merge the generated hook snippet into `~/.claude/settings.json` (SessionStart + Stop).  
+Restart Claude Code, then `/tts` in a project.
 
 ---
 
 ## How it works
 
-1. **`/tts`** creates or deletes a marker file for the current working directory.
+1. **`/tts`** (or `ai-tts toggle`) creates/deletes a marker under `~/.{grok\|claude}/.tts-dirs/`.
 2. **SessionStart** tells the model whether TTS is on for this directory.
 3. **When on**, the model ends every response with:
 
@@ -120,16 +171,24 @@ Claude markers live under `~/.claude/.tts-dirs/` — **independent** of Grok’s
    <say>One or two plain spoken sentences.</say>
    ```
 
-4. **Stop** extracts that block and launches `speak.ps1` **detached** (no turn block, no tool call).
+4. **Stop** extracts that block and runs `ai-tts speak` **detached** (no tool call, no blocked turn).
 
-Details: [docs/architecture.md](docs/architecture.md).
+```text
+Stop hook → ai-tts hook-stop → detach speak
+                                    │
+                         mode=daemon? ──yes──► TCP 127.0.0.1:18765
+                                    │ no
+                         WebSocket stream (if websockets) else REST
+                                    │
+                         play WAV (OS player)
+```
 
-### `<say>` guidelines (for agents / rules)
+### `<say>` guidelines
 
-- 1–2 sentences, conversational
-- No code, paths, markdown, or long identifiers
-- Final line of the response only
-- **Never** call `speak.ps1` from the agent — the hook does it
+- 1–2 sentences, conversational  
+- No code, paths, markdown, or long identifiers  
+- Final line of the response only  
+- **Never** call TTS from the agent yourself — the hook does it  
 
 ---
 
@@ -145,6 +204,8 @@ Edit `~/.ai-tts/config.json`:
   "mode": "direct",
   "daemon": {
     "enabled": false,
+    "host": "127.0.0.1",
+    "port": 18765,
     "pipeName": "ai-tts",
     "autoStart": false,
     "optimizeStreamingLatency": 2,
@@ -153,41 +214,47 @@ Edit `~/.ai-tts/config.json`:
 }
 ```
 
-See [docs/voices.md](docs/voices.md) for voice IDs (`carina`, `eve`, `leo`, `ara`, …).
+| Field | Meaning |
+|-------|---------|
+| `mode` | `direct` (default) or `daemon` |
+| `daemon.host` / `port` | TCP endpoint for the portable daemon |
+| `daemon.pipeName` | Legacy Windows named-pipe daemon only |
+| `daemon.autoStart` | If daemon is down, try to start it once |
+| `optimizeStreamingLatency` | `0`–`2` (higher = faster first audio, slight quality tradeoff) |
 
-Re-install with a new default:
+Voices: [docs/voices.md](docs/voices.md) (`carina`, `eve`, `leo`, `ara`, …).
+
+Re-install defaults:
 
 ```powershell
 .\install.ps1 -Target Grok -Voice eve -Force
+```
+
+```bash
+VOICE=eve FORCE=1 ./install.sh Grok
 ```
 
 ---
 
 ## Optional low-latency daemon
 
-Default **direct** mode runs a short-lived speak process per turn (simple, no background process).
+**Direct mode** (default): short-lived process per turn — simple, no background worker.
 
-For faster speech, enable the **optional TCP daemon** (warm Python process + streaming TTS when `websockets` is installed):
+**Daemon mode**: warm Python process on localhost TCP; better for frequent `/tts` use.
 
 ```bash
-# Any OS — start daemon and set mode=daemon
+# Start (also sets mode=daemon in config)
 ai-tts daemon --enable-config
-# Windows: start in another window, or:
-# Start-Process ... ai-tts.cmd daemon --enable-config
 
 ai-tts daemon-ping
-ai-tts daemon-stop    # also sets mode=direct
+ai-tts daemon-stop    # stops server and sets mode=direct
 ```
 
-| Setting | Effect |
-|---------|--------|
-| `"mode": "direct"` (default) | One-shot speak per turn |
-| `"mode": "daemon"` + daemon running | TCP `127.0.0.1:18765` → warm worker |
-| `daemon.autoStart: true` | If server is down, Stop path tries to start it once |
+Windows convenience wrappers still exist (`scripts/daemon-start.ps1` prefers the Python TCP daemon).
 
-If daemon mode is on but the process is not running (and autoStart is off), speak **falls back to direct** automatically.
+If daemon mode is configured but the server is not running (and `autoStart` is false), speak **falls back to direct** automatically.
 
-Windows also still ships a legacy named-pipe PowerShell daemon (`scripts/daemon-start.ps1`); prefer the Python TCP daemon.
+Details: [docs/daemon.md](docs/daemon.md) · [docs/platforms.md](docs/platforms.md)
 
 ---
 
@@ -195,68 +262,49 @@ Windows also still ships a legacy named-pipe PowerShell daemon (`scripts/daemon-
 
 ```text
 ai-tts/
-├── README.md                 <- you are here
-├── install.ps1               <- Windows installer (production)
-├── install.sh                <- macOS/Linux installer scaffold
+├── README.md
+├── install.ps1                 # Windows installer (Python hooks preferred)
+├── install.sh                  # macOS/Linux installer
 ├── uninstall.ps1
+├── pyproject.toml
+├── requirements.txt            # optional: websockets
 ├── config.example.json
 ├── src/
-│   ├── speak.ps1             <- one-shot player (direct mode, Windows)
-│   ├── speak-core.ps1        <- REST + streaming WebSocket
-│   ├── common.ps1            <- hooks: markers + daemon/direct dispatch
-│   ├── daemon.ps1            <- optional warm named-pipe worker (Windows)
-│   └── python/               <- portable core scaffold (Phase 1+)
+│   ├── python/ai_tts/          # portable core (primary)
+│   ├── speak.ps1               # Windows PS fallback
+│   ├── speak-core.ps1
+│   ├── common.ps1
+│   └── daemon.ps1              # legacy named-pipe daemon (Windows)
 ├── scripts/
 │   ├── daemon-start.ps1
 │   └── daemon-stop.ps1
-├── grok/                     <- Grok Build packaging (primary)
-│   ├── hooks/
-│   ├── skills/tts/
-│   └── rules/
-├── claude/                   <- Claude Code packaging
-│   ├── hooks/
-│   ├── skills/tts/
-│   ├── rules/
-│   └── settings.hooks.snippet.json
+├── grok/                       # packaging templates (skills, rules, PS hooks)
+├── claude/
 ├── docs/
 │   ├── architecture.md
 │   ├── daemon.md
-│   ├── platforms.md          <- multi-OS plan (Python + TCP daemon)
+│   ├── platforms.md            # multi-OS design + status
 │   └── voices.md
 └── examples/
     └── manual-smoke.ps1
 ```
-
-### Cross-platform direction
-
-| Priority | Approach |
-|----------|----------|
-| 1 | **Python 3** portable speak/daemon core |
-| 2 | Daemon over **localhost TCP** (not named pipes as primary) |
-| 3 | Playback: **afplay** (macOS), **ffplay/paplay** (Linux), winmm (Windows) |
-| 4 | Dual installers: `install.ps1` + `install.sh` |
-
-Details and phases: **[docs/platforms.md](docs/platforms.md)**.
 
 ---
 
 ## Porting checklist (another machine)
 
 - [ ] Clone this repo  
-- [ ] Set **User** env `XAI_API_KEY`  
-- [ ] `.\install.ps1 -Target Grok` (or `Both`)  
-- [ ] Smoke: `.\examples\manual-smoke.ps1`  
-- [ ] New Grok session → `/tts` → ask a question → hear speech  
-- [ ] Optional: change voice in `~/.ai-tts/config.json`  
+- [ ] Install **Python 3.10+**  
+- [ ] Set `XAI_API_KEY` (User/login env)  
+- [ ] `.\install.ps1 -Target Grok` **or** `./install.sh Grok`  
+- [ ] `ai-tts probe` then `ai-tts speak "Hello"`  
+- [ ] New Grok/Claude session → `/tts` → hear speech  
+- [ ] Optional: `ai-tts daemon --enable-config` for lower latency  
+- [ ] Optional: `pip install --user 'websockets>=12.0'` for streaming  
 
-### Manual install (no installer)
+### Linux playback
 
-1. Copy `src/speak.ps1` + `src/common.ps1` → `~/.ai-tts/`  
-2. Copy `config.example.json` → `~/.ai-tts/config.json` and set `voice`  
-3. Copy `grok/hooks/*.ps1` → `~/.grok/hooks/`  
-4. Render `grok/hooks/tts.json.template` → `tts.json`, replacing `__GROK_HOOKS__` with your hooks directory using forward slashes  
-5. Copy skill + rules into `~/.grok/skills/tts/` and `~/.grok/rules/`  
-6. Restart Grok  
+Install one of: `ffmpeg` (`ffplay`), `paplay`, or `aplay`.
 
 ---
 
@@ -264,8 +312,14 @@ Details and phases: **[docs/platforms.md](docs/platforms.md)**.
 
 ```powershell
 .\uninstall.ps1 -Target Both
-# also wipe config + markers:
 .\uninstall.ps1 -Target Both -RemoveConfig -RemoveMarkers
+```
+
+On macOS/Linux, remove install artifacts manually if needed:
+
+```bash
+rm -rf ~/.ai-tts ~/.grok/hooks/tts.json ~/.grok/skills/tts ~/.grok/rules/voice-tts.md
+# and Claude equivalents if installed
 ```
 
 ---
@@ -274,20 +328,23 @@ Details and phases: **[docs/platforms.md](docs/platforms.md)**.
 
 | Symptom | Fix |
 |---------|-----|
-| No speech | Confirm User-level `XAI_API_KEY`; test `speak.ps1` alone |
-| Slow after `<say>` appears | Expected in direct mode (turn end + spawn). Use **daemon mode** ([docs/daemon.md](docs/daemon.md)) |
-| Daemon configured but still slow | Ensure process is running (`daemon-start.ps1`); check `daemon.log` |
-| Model never emits `<say>` | Run `/tts` (must be ON); new session so SessionStart + rules load |
-| Hooks not firing | Grok: `/hooks` and confirm `tts.json` enabled; reload or restart |
-| Claude silent | Check `settings.json` Stop/SessionStart include tts hooks; transcript path present |
+| No speech | `ai-tts probe` — check `XAI_API_KEY` and players; try `ai-tts speak "test"` |
+| `command not found: ai-tts` | Use full path `~/.ai-tts/bin/ai-tts` or re-run installer |
+| Slow after `<say>` appears | Turn end + process start. Use **daemon mode**; install `websockets` for streaming |
+| Daemon configured but silent | `ai-tts daemon-ping`; start with `ai-tts daemon --enable-config`; check `~/.ai-tts/daemon.log` |
+| Model never emits `<say>` | `/tts` must be ON; new session so SessionStart + rules load |
+| Hooks not firing | Grok: `/hooks`, confirm `tts.json`; reload or new session |
+| Linux no audio | Install `ffplay`, `paplay`, or `aplay` |
+| Claude silent | Merge hook snippet into `settings.json`; confirm Stop runs |
 | Wrong voice | Edit `~/.ai-tts/config.json` → `voice` |
-| Dictation vs TTS | `/voice` / Ctrl+Space is **input**; this skill is **output** |
+| Dictation vs TTS | `/voice` is **input**; this project is **output** |
 
 ---
 
 ## Security
 
-- Hooks execute local PowerShell with your user permissions.  
+- Hooks and the daemon run as your user.  
+- Daemon binds **localhost only** by default.  
 - Install only from a source you trust.  
 - No API keys are stored in this repo.
 
