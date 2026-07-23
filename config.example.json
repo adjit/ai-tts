@@ -6,9 +6,11 @@
   "daemon": {
     "enabled": false,
     "pipeName": "ai-tts",
+    "host": "127.0.0.1",
+    "port": 18765,
     "autoStart": false,
     "optimizeStreamingLatency": 2,
     "sampleRate": 24000
   },
-  "_comment": "mode: 'direct' (default, spawn speak.ps1 per turn) or 'daemon' (warm process + streaming TTS). Set daemon.enabled true or mode to 'daemon'. Start with: powershell -File ~/.ai-tts/daemon.ps1  OR  .\\scripts\\daemon-start.ps1"
+  "_comment": "mode: direct|daemon. Windows today: named pipe (pipeName) via PowerShell daemon. Portable target: TCP host:port (see docs/platforms.md). Start Win daemon: scripts/daemon-start.ps1"
 }

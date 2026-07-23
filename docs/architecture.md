@@ -82,6 +82,10 @@ Let coding agents **speak a short spoken summary** of each completed turn using 
 
 Daemon is **optional**. If enabled but not running (and `autoStart` is false), hooks fall back to direct mode. See [daemon.md](daemon.md).
 
+## Multi-OS
+
+Windows PowerShell is production today. Portable expansion (Python core, TCP daemon, macOS/Linux players) is specified in [platforms.md](platforms.md).
+
 ## Security notes
 
 - Hooks run with your user privileges. Only install from a trusted clone.

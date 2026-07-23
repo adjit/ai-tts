@@ -25,11 +25,10 @@ Grok: [does the work, prints a normal reply]
 
 ## Requirements
 
-- **Windows** (PowerShell + winmm / System.Speech playback)
-- **`XAI_API_KEY`** set as a **User** environment variable (so detached hook processes can see it)
+- **Windows (supported today):** PowerShell + winmm / System.Speech playback  
+- **macOS / Linux:** planned — see [docs/platforms.md](docs/platforms.md); `install.sh` is a scaffold only  
+- **`XAI_API_KEY`** set as a **User**/login environment variable (so detached hook processes can see it)  
 - **Grok Build** and/or **Claude Code**
-
-> macOS/Linux playback is not wired yet; contributions welcome (e.g. `afplay` / `ffplay`).
 
 ---
 
@@ -183,14 +182,16 @@ Full details: [docs/daemon.md](docs/daemon.md).
 ```text
 ai-tts/
 ├── README.md                 <- you are here
-├── install.ps1               <- Windows installer
+├── install.ps1               <- Windows installer (production)
+├── install.sh                <- macOS/Linux installer scaffold
 ├── uninstall.ps1
 ├── config.example.json
 ├── src/
-│   ├── speak.ps1             <- one-shot player (direct mode)
+│   ├── speak.ps1             <- one-shot player (direct mode, Windows)
 │   ├── speak-core.ps1        <- REST + streaming WebSocket
 │   ├── common.ps1            <- hooks: markers + daemon/direct dispatch
-│   └── daemon.ps1            <- optional warm named-pipe worker
+│   ├── daemon.ps1            <- optional warm named-pipe worker (Windows)
+│   └── python/               <- portable core scaffold (Phase 1+)
 ├── scripts/
 │   ├── daemon-start.ps1
 │   └── daemon-stop.ps1
@@ -206,10 +207,22 @@ ai-tts/
 ├── docs/
 │   ├── architecture.md
 │   ├── daemon.md
+│   ├── platforms.md          <- multi-OS plan (Python + TCP daemon)
 │   └── voices.md
 └── examples/
     └── manual-smoke.ps1
 ```
+
+### Cross-platform direction
+
+| Priority | Approach |
+|----------|----------|
+| 1 | **Python 3** portable speak/daemon core |
+| 2 | Daemon over **localhost TCP** (not named pipes as primary) |
+| 3 | Playback: **afplay** (macOS), **ffplay/paplay** (Linux), winmm (Windows) |
+| 4 | Dual installers: `install.ps1` + `install.sh` |
+
+Details and phases: **[docs/platforms.md](docs/platforms.md)**.
 
 ---
 
