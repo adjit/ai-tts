@@ -42,54 +42,57 @@ Grok: [does the work, prints a normal reply]
 
 ## Quick start
 
-### Windows
+1. Get an API key from [console.x.ai](https://console.x.ai) → set `XAI_API_KEY` (login / User env so hooks see it).
+2. Install, health-check, speak:
 
-```powershell
-git clone <this-repo-url> ai-tts
-cd ai-tts
-.\install.ps1 -Target Grok -Voice carina -Force
-
-& "$env:USERPROFILE\.ai-tts\bin\ai-tts.cmd" probe
-& "$env:USERPROFILE\.ai-tts\bin\ai-tts.cmd" speak "Hello from Carina"
-```
-
-`-LegacyPowerShellHooks` is **deprecated** (old Windows PowerShell hooks). Do not use for new setups.
-
-### macOS / Linux
+**macOS / Linux**
 
 ```bash
-git clone <this-repo-url> ai-tts
-cd ai-tts
-chmod +x install.sh
-./install.sh Grok
-# VOICE=eve FORCE=1 ./install.sh Both
+git clone <this-repo-url> ai-tts && cd ai-tts
+chmod +x install.sh uninstall.sh
 
-~/.ai-tts/bin/ai-tts probe
-~/.ai-tts/bin/ai-tts speak "Hello from Carina"
+# Interactive (TTY): pick target + voice with a Rich UI
+./install.sh
+
+# Or non-interactive / CI:
+# ./install.sh Grok
+# VOICE=eve FORCE=1 ./install.sh Both
+# AI_TTS_INSTALL_NONINTERACTIVE=1 ./install.sh
+
+# PATH: source ~/.ai-tts/env.sh   # or use ~/.local/bin/ai-tts symlink
+ai-tts doctor
+ai-tts speak "Hello from Carina"
 ```
 
-### After install (any OS)
+**Windows**
 
-1. **New agent session** (or reload hooks) so SessionStart/Stop load.
-2. Open a project directory.
-3. Run **`/tts`** → should report `TTS ON`.
-4. Ask anything; the reply should end with `<say>...</say>` and you should hear speech.
+```powershell
+git clone <this-repo-url> ai-tts; cd ai-tts
+.\install.ps1 -Target Grok -Voice carina -Force
+# New terminal so User PATH picks up %USERPROFILE%\.ai-tts\bin
+ai-tts doctor
+ai-tts speak "Hello from Carina"
+```
 
-Toggle off with `/tts` again. State is **per directory** and persists across sessions.
+3. **New agent session** → open a project → **`/tts`** → ask something; you should hear the `<say>` line.
 
-More detail: [docs/platforms.md](docs/platforms.md) · [docs/architecture.md](docs/architecture.md) · [docs/voices.md](docs/voices.md)
+Toggle off with `/tts` again (per directory).  
+Full path still works if PATH is not set: `~/.ai-tts/bin/ai-tts` or `%USERPROFILE%\.ai-tts\bin\ai-tts.cmd`.
+
+More detail: [docs/platforms.md](docs/platforms.md) · [docs/architecture.md](docs/architecture.md) · [docs/voices.md](docs/voices.md) · [docs/testing.md](docs/testing.md)
 
 ---
 
 ## CLI reference
 
-After install, the launcher is:
-
-- Windows: `%USERPROFILE%\.ai-tts\bin\ai-tts.cmd`
-- macOS/Linux: `~/.ai-tts/bin/ai-tts`
-
 ```text
-ai-tts probe                          # players, config, API key, streaming
+ai-tts doctor                         # post-install health + fix hints
+ai-tts setup                          # alias for doctor
+ai-tts probe                          # compact players / config / key
+ai-tts status                         # TTS on/off for cwd + daemon
+ai-tts config                         # show config.json
+ai-tts config set voice eve           # voice | language | speed | mode
+ai-tts voices                         # known voice ids
 ai-tts speak "Hello"                  # one-shot TTS + play
 ai-tts speak --transport rest "..."   # force REST (no WebSocket)
 ai-tts toggle --harness grok          # same as /tts for Grok
@@ -97,6 +100,7 @@ ai-tts toggle --harness claude        # Claude marker root
 ai-tts daemon --enable-config         # optional low-latency TCP server
 ai-tts daemon-ping
 ai-tts daemon-stop
+ai-tts uninstall [--remove-config] [--remove-markers]
 ai-tts hook-state --harness grok      # used by SessionStart
 ai-tts hook-stop --harness grok       # used by Stop
 ```
@@ -105,7 +109,7 @@ From a repo checkout without installing:
 
 ```bash
 export PYTHONPATH=src/python   # Windows: set PYTHONPATH=src\python
-python -m ai_tts probe
+python -m ai_tts doctor
 ```
 
 ---
@@ -117,9 +121,11 @@ python -m ai_tts probe
 | Path | Purpose |
 |------|---------|
 | `bin/ai-tts` / `bin/ai-tts.cmd` | CLI launcher |
-| `lib/ai_tts/` | Python package (speak, daemon, hooks) |
-| `config.json` | Voice, mode (`direct`/`daemon`), daemon host/port |
+| `lib/ai_tts/` | Python package (speak, daemon, hooks, doctor, …) |
+| `config.json` | Voice, mode (`direct`/`daemon`), daemon host/port — prefer `ai-tts config` |
+| `env.sh` | PATH fragment (Unix); `source ~/.ai-tts/env.sh` |
 | `docs/` | Copied reference docs |
+| `claude-settings.hooks.snippet.json` | Claude hook merge helper (if Claude installed) |
 | `speak.ps1`, `common.ps1`, … | **Deprecated** PowerShell fallback (Windows only) |
 
 ### Grok (`~/.grok`)
@@ -196,7 +202,19 @@ Stop hook → ai-tts hook-stop → detach speak
 
 ## Configuration
 
-Edit `~/.ai-tts/config.json`:
+**Prefer the CLI** (writes `~/.ai-tts/config.json`):
+
+```bash
+ai-tts config                         # show effective settings
+ai-tts config set voice eve
+ai-tts config set language en
+ai-tts config set speed 1.1
+ai-tts config set mode direct         # or: daemon
+ai-tts voices                         # known voice ids
+ai-tts status                         # cwd on/off + daemon
+```
+
+Equivalent file (`~/.ai-tts/config.json` or `$AI_TTS_HOME/config.json`):
 
 ```json
 {
@@ -218,13 +236,13 @@ Edit `~/.ai-tts/config.json`:
 
 | Field | Meaning |
 |-------|---------|
-| `mode` | `direct` (default) or `daemon` |
+| `mode` | `direct` (default) or `daemon` — also `ai-tts config set mode …` |
 | `daemon.host` / `port` | TCP endpoint for the portable daemon |
 | `daemon.pipeName` | Legacy Windows named-pipe daemon only |
 | `daemon.autoStart` | If daemon is down, try to start it once |
 | `optimizeStreamingLatency` | `0`–`2` (higher = faster first audio, slight quality tradeoff) |
 
-Voices: [docs/voices.md](docs/voices.md) (`carina`, `eve`, `leo`, `ara`, …).
+Voices: [docs/voices.md](docs/voices.md) · daemon: [docs/daemon.md](docs/daemon.md).
 
 Re-install defaults:
 
@@ -245,10 +263,11 @@ VOICE=eve FORCE=1 ./install.sh Grok
 **Daemon mode**: warm Python process on localhost TCP; better for frequent `/tts` use.
 
 ```bash
-# Start (also sets mode=daemon in config)
+# Enable + start (or: ai-tts config set mode daemon && ai-tts daemon)
 ai-tts daemon --enable-config
 
 ai-tts daemon-ping
+ai-tts status         # "daemon": "up" | "down"
 ai-tts daemon-stop    # stops server and sets mode=direct
 ```
 
@@ -278,6 +297,8 @@ ai-tts/
 │   ├── common.ps1              # DEPRECATED
 │   └── daemon.ps1              # DEPRECATED named-pipe daemon
 ├── scripts/
+│   ├── run-tests.sh / .ps1     # unit suite (+ Docker / live)
+│   ├── smoke.sh / smoke.ps1    # product probe + hooks (+ optional speak)
 │   ├── daemon-start.ps1        # prefers Python; -LegacyNamedPipe DEPRECATED
 │   └── daemon-stop.ps1
 ├── grok/                       # packaging (skills/rules; PS hooks DEPRECATED)
@@ -286,17 +307,19 @@ ai-tts/
 │   ├── architecture.md
 │   ├── daemon.md
 │   ├── platforms.md
+│   ├── testing.md              # quality ladder + how to run tests
 │   ├── DEPRECATED_POWERSHELL.md
 │   └── voices.md
 └── examples/
-    └── manual-smoke.ps1
+    └── manual-smoke.ps1        # DEPRECATED → scripts/smoke.ps1
 ```
 
 ---
 
 ## Tests
 
-Unit tests mock the xAI API and never touch your real home directory.
+Unit tests mock the xAI API and never touch your real home directory.  
+Details and **definition of done**: [docs/testing.md](docs/testing.md).
 
 ```powershell
 # Windows local
@@ -304,15 +327,21 @@ Unit tests mock the xAI API and never touch your real home directory.
 
 # Linux container (independent of host OS)
 .\scripts\run-tests.ps1 -Docker
+
+# Product smoke (probe + hook-state; speak if XAI_API_KEY set)
+.\scripts\smoke.ps1
 ```
 
 ```bash
 # macOS / Linux local
-chmod +x scripts/run-tests.sh
+chmod +x scripts/run-tests.sh scripts/smoke.sh
 ./scripts/run-tests.sh
 
 # Linux container
 ./scripts/run-tests.sh --docker
+
+# Product smoke
+./scripts/smoke.sh
 ```
 
 ```bash
@@ -330,7 +359,7 @@ CI: `.github/workflows/test.yml` runs unit tests on Ubuntu, Windows, and macOS, 
 - [ ] Install **Python 3.10+**  
 - [ ] Set `XAI_API_KEY` (User/login env)  
 - [ ] `.\install.ps1 -Target Grok` **or** `./install.sh Grok`  
-- [ ] `ai-tts probe` then `ai-tts speak "Hello"`  
+- [ ] `ai-tts doctor` then `ai-tts speak "Hello"`  
 - [ ] New Grok/Claude session → `/tts` → hear speech  
 - [ ] Optional: `ai-tts daemon --enable-config` for lower latency  
 - [ ] Optional: `pip install --user 'websockets>=12.0'` for streaming  
@@ -346,13 +375,13 @@ Install one of: `ffmpeg` (`ffplay`), `paplay`, or `aplay`.
 ```powershell
 .\uninstall.ps1 -Target Both
 .\uninstall.ps1 -Target Both -RemoveConfig -RemoveMarkers
+# or: ai-tts uninstall --remove-config --remove-markers
 ```
 
-On macOS/Linux, remove install artifacts manually if needed:
-
 ```bash
-rm -rf ~/.ai-tts ~/.grok/hooks/tts.json ~/.grok/skills/tts ~/.grok/rules/voice-tts.md
-# and Claude equivalents if installed
+./uninstall.sh Both
+./uninstall.sh Both --remove-config --remove-markers
+# or: ai-tts uninstall --remove-config --remove-markers
 ```
 
 ---
@@ -361,8 +390,8 @@ rm -rf ~/.ai-tts ~/.grok/hooks/tts.json ~/.grok/skills/tts ~/.grok/rules/voice-t
 
 | Symptom | Fix |
 |---------|-----|
-| No speech | `ai-tts probe` — check `XAI_API_KEY` and players; try `ai-tts speak "test"` |
-| `command not found: ai-tts` | Use full path `~/.ai-tts/bin/ai-tts` or re-run installer |
+| No speech | `ai-tts doctor` — fix key/players/hooks; try `ai-tts speak "test"` |
+| `command not found: ai-tts` | `source ~/.ai-tts/env.sh` or full path `~/.ai-tts/bin/ai-tts`; re-run installer |
 | Slow after `<say>` appears | Turn end + process start. Use **daemon mode**; install `websockets` for streaming |
 | Daemon configured but silent | `ai-tts daemon-ping`; start with `ai-tts daemon --enable-config`; check `~/.ai-tts/daemon.log` |
 | Model never emits `<say>` | `/tts` must be ON; new session so SessionStart + rules load |

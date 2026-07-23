@@ -59,8 +59,25 @@ Let coding agents **speak a short spoken summary** of each completed turn using 
 |------|------|
 | `bin/ai-tts` / `ai-tts.cmd` | CLI launcher (**supported**) |
 | `lib/ai_tts/` | Python package (**supported**) |
-| `config.json` | `voice`, `mode`, `daemon.*` |
+| `config.json` | `voice`, `mode`, `daemon.*` (prefer `ai-tts config`) |
+| `env.sh` | PATH fragment (Unix install) |
 | `speak.ps1`, `daemon.ps1`, … | **Deprecated** Windows PowerShell fallback |
+
+## CLI surface (day-to-day)
+
+| Command | Role |
+|---------|------|
+| `ai-tts doctor` / `setup` | Post-install health checks + fix hints |
+| `ai-tts status` | TTS on/off for cwd, voice, daemon up/down |
+| `ai-tts config` / `config set …` | Show / update voice, language, speed, mode |
+| `ai-tts voices` | Known voice ids |
+| `ai-tts toggle` | Same as `/tts` (per-directory marker) |
+| `ai-tts speak` | One-shot synthesis + play |
+| `ai-tts daemon*` | Optional warm TCP server |
+| `ai-tts uninstall` | Remove install artifacts |
+
+Hooks (`hook-state`, `hook-stop`) are for the agent harness, not interactive use.  
+Full list: [README.md](../README.md) · platforms: [platforms.md](platforms.md).
 
 ## Modes
 

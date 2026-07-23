@@ -36,8 +36,8 @@ def main(argv: list[str] | None = None) -> int:
         help="Set mode=daemon in config.json",
     )
 
-    p_stopd = sub.add_parser("daemon-stop", help="Ask daemon to shut down")
-    p_ping = sub.add_parser("daemon-ping", help="Ping daemon")
+    sub.add_parser("daemon-stop", help="Ask daemon to shut down")
+    sub.add_parser("daemon-ping", help="Ping daemon")
 
     p_toggle = sub.add_parser("toggle", help="Toggle /tts marker for a directory")
     p_toggle.add_argument("--cwd", default=None)
@@ -53,16 +53,65 @@ def main(argv: list[str] | None = None) -> int:
     p_hstop = sub.add_parser("hook-stop", help="Stop hook")
     p_hstop.add_argument("--harness", choices=["grok", "claude"], default="grok")
 
-    p_probe = sub.add_parser("probe", help="Show players / config / stream availability")
+    sub.add_parser("probe", help="Show players / config / stream availability")
+    sub.add_parser(
+        "doctor",
+        help="Post-install health checks with fix hints",
+    )
+    sub.add_parser(
+        "setup",
+        help="Alias for doctor (guided post-install checks)",
+    )
 
-    # Allow: python -m ai_tts speak -- hello world
-    # and bare help
+    p_config = sub.add_parser("config", help="Show or set config.json values")
+    p_config.add_argument(
+        "action",
+        nargs="?",
+        default="show",
+        choices=["show", "set"],
+        help="show (default) or set",
+    )
+    p_config.add_argument("key", nargs="?", help="For set: voice|language|speed|mode")
+    p_config.add_argument("value", nargs="?", help="For set: new value")
+
+    p_status = sub.add_parser(
+        "status",
+        help="TTS on/off for cwd, voice, daemon reachability",
+    )
+    p_status.add_argument("--cwd", default=None)
+    p_status.add_argument(
+        "--harness",
+        choices=["grok", "claude"],
+        default="grok",
+    )
+
+    sub.add_parser("voices", help="List known TTS voices")
+
+    p_un = sub.add_parser("uninstall", help="Remove install artifacts")
+    p_un.add_argument(
+        "--target",
+        choices=["grok", "claude", "both", "shared"],
+        default="both",
+    )
+    p_un.add_argument(
+        "--remove-config",
+        action="store_true",
+        help="Delete entire AI_TTS_HOME (including config.json)",
+    )
+    p_un.add_argument(
+        "--remove-markers",
+        action="store_true",
+        help="Delete per-directory .tts-dirs markers",
+    )
+
     if not argv or argv[0] in {"-h", "--help", "help"}:
         parser.print_help()
         print(
             "\nExamples:\n"
             '  python -m ai_tts speak "Hello from Carina"\n'
-            "  python -m ai_tts daemon\n"
+            "  python -m ai_tts doctor\n"
+            "  python -m ai_tts config set voice eve\n"
+            "  python -m ai_tts status\n"
             "  python -m ai_tts toggle --harness grok\n"
             "  python -m ai_tts probe\n"
         )
@@ -83,7 +132,6 @@ def main(argv: list[str] | None = None) -> int:
         cfg = load_config()
         try:
             meta = None
-            # Prefer warm TCP daemon when enabled (unless transport forced to rest/stream local)
             if cfg.daemon_enabled and args.transport == "auto":
                 try:
                     meta = speak_via_daemon(
@@ -167,7 +215,9 @@ def main(argv: list[str] | None = None) -> int:
         on, cwd = toggle(args.cwd, args.harness)
         voice = load_config().voice
         if on:
-            print(f"TTS ON for this directory: {cwd} (voice: {voice}) harness={args.harness}")
+            print(
+                f"TTS ON for this directory: {cwd} (voice: {voice}) harness={args.harness}"
+            )
         else:
             print(f"TTS OFF for this directory: {cwd} harness={args.harness}")
         return 0
@@ -188,16 +238,111 @@ def main(argv: list[str] | None = None) -> int:
         from .tts_stream import streaming_available
 
         cfg = load_config()
-        print("config:", json.dumps({
-            "voice": cfg.voice,
-            "mode": cfg.mode,
-            "daemon_enabled": cfg.daemon_enabled,
-            "host": cfg.daemon.host,
-            "port": cfg.daemon.port,
-        }))
+        print(
+            "config:",
+            json.dumps(
+                {
+                    "voice": cfg.voice,
+                    "mode": cfg.mode,
+                    "daemon_enabled": cfg.daemon_enabled,
+                    "host": cfg.daemon.host,
+                    "port": cfg.daemon.port,
+                }
+            ),
+        )
         print("players:", ", ".join(probe_players()) or "(none)")
         print("streaming_websockets:", streaming_available())
         print("XAI_API_KEY:", "set" if get_api_key() else "MISSING")
+        return 0
+
+    if args.cmd in {"doctor", "setup"}:
+        from .doctor import doctor_exit_code, format_report, run_checks
+
+        results = run_checks()
+        sys.stdout.write(format_report(results))
+        return doctor_exit_code(results)
+
+    if args.cmd == "config":
+        from .cli_config import config_as_dict, set_config_value
+
+        if args.action == "show" or args.action is None:
+            print(json.dumps(config_as_dict(), indent=2))
+            return 0
+        if args.action == "set":
+            if not args.key or args.value is None:
+                print(
+                    "usage: ai-tts config set <voice|language|speed|mode> <value>",
+                    file=sys.stderr,
+                )
+                return 2
+            try:
+                cfg = set_config_value(args.key, args.value)
+            except ValueError as e:
+                print(f"ai-tts config set: {e}", file=sys.stderr)
+                return 2
+            print(json.dumps(config_as_dict(cfg), indent=2))
+            return 0
+        return 2
+
+    if args.cmd == "status":
+        import os
+
+        from .client import DaemonClientError, ping_daemon
+        from .config import load_config
+        from .markers import is_enabled
+
+        cfg = load_config()
+        cwd = args.cwd or os.getcwd()
+        on = is_enabled(cwd, args.harness)
+        daemon = "down"
+        try:
+            ping_daemon(cfg)
+            daemon = "up"
+        except DaemonClientError:
+            daemon = "down"
+        print(
+            json.dumps(
+                {
+                    "cwd": cwd,
+                    "harness": args.harness,
+                    "tts": "on" if on else "off",
+                    "voice": cfg.voice,
+                    "mode": cfg.mode,
+                    "daemon_enabled": cfg.daemon_enabled,
+                    "daemon": daemon,
+                    "daemon_endpoint": f"{cfg.daemon.host}:{cfg.daemon.port}",
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    if args.cmd == "voices":
+        from .voices import list_known_voices
+
+        for v in list_known_voices():
+            g = f" ({v['gender']})" if v.get("gender") else ""
+            print(f"{v['voice_id']:10} {v['name']}{g}")
+        print(
+            "\nSet default: ai-tts config set voice <id>\n"
+            "Live catalog: https://docs.x.ai (TTS voices API)"
+        )
+        return 0
+
+    if args.cmd == "uninstall":
+        from .uninstall import format_uninstall_report, uninstall
+
+        notes: list[str] = []
+        if args.target in {"claude", "both"}:
+            notes.append(
+                "If you merged hooks into ~/.claude/settings.json, remove them manually."
+            )
+        removed = uninstall(
+            target=args.target,
+            remove_config=args.remove_config,
+            remove_markers=args.remove_markers,
+        )
+        sys.stdout.write(format_uninstall_report(removed, notes=notes))
         return 0
 
     parser.print_help()

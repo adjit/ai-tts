@@ -14,9 +14,20 @@ REQUIRED = [
     "src/python/ai_tts/speak.py",
     "src/python/ai_tts/daemon_server.py",
     "docs/platforms.md",
+    "docs/testing.md",
     "docs/DEPRECATED_POWERSHELL.md",
+    "scripts/run-tests.sh",
+    "scripts/smoke.sh",
+    "scripts/smoke.ps1",
+    "uninstall.sh",
+    "src/python/ai_tts/doctor.py",
+    "src/python/ai_tts/voices.py",
+    "src/python/ai_tts/uninstall.py",
+    "src/python/ai_tts/cli_config.py",
+    "src/python/ai_tts/install_ui.py",
     "Dockerfile",
     "docker-compose.test.yml",
+    ".github/workflows/test.yml",
 ]
 
 
