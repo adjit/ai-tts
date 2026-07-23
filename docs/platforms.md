@@ -1,192 +1,76 @@
-# Multi-OS expansion plan
+# Multi-OS support
 
-**Status today:** Windows-first (PowerShell 5.1+, winmm playback, named-pipe daemon).  
-**Goal:** Same skill UX on **Windows, macOS, and Linux** for Grok Build and Claude Code.
-
-This document is the recommended path — not all of it is implemented yet.
+**Status:** Python portable core is implemented (Phase 1 + Phase 2).  
+Windows PowerShell remains as a fallback runtime.
 
 ---
 
-## What is already portable
+## What you get
 
-| Layer | Portable? | Notes |
-|-------|-----------|--------|
-| xAI REST TTS | Yes | HTTPS; no OS dependency |
-| xAI streaming WebSocket | Yes | `wss://api.x.ai/v1/tts` |
-| Grok / Claude hooks model | Yes | JSON hooks + shell command |
-| `/tts` skill idea | Yes | Marker files under `~/.{grok,claude}/.tts-dirs` |
-| Rules (`voice-tts.md`) | Yes | Markdown only |
-
-## What is Windows-only today
-
-| Piece | Why |
-|-------|-----|
-| `winmm` / MCI playback | Win32 API |
-| `System.Speech` fallback | .NET Framework Windows |
-| Named pipe daemon `\\.\pipe\ai-tts` | Works on Windows; Unix needs different IPC |
-| `install.ps1` / `Start-Process powershell.exe` | Windows process model |
-| Hook command lines hardcoding `powershell -File ...` | macOS/Linux prefer `pwsh` or a language runtime |
+| Feature | Windows | macOS | Linux |
+|---------|---------|-------|-------|
+| One-shot speak | Yes | Yes | Yes |
+| Optional TCP daemon | Yes | Yes | Yes |
+| Grok hooks | Yes | Yes | Yes |
+| Claude hooks | Yes | Yes | Yes |
+| Playback | winsound / ffplay | afplay | ffplay / paplay / aplay |
+| Streaming TTS | if `websockets` installed | same | same |
 
 ---
 
-## Recommendation (short version)
+## Install
 
-1. **Keep harness packaging (skills, rules, hook *logic*) OS-agnostic.**  
-2. **Move the runtime (TTS + playback + optional daemon) to a small portable core** — prefer **Python 3.10+**.  
-3. **Use localhost TCP for the daemon**, not named pipes — one protocol on every OS.  
-4. **Thin per-OS playback adapters** (`afplay`, `ffplay`/`paplay`, winmm).  
-5. **Ship `install.ps1` + `install.sh`**; both write the right hook command for the host.  
-6. **Do not require PowerShell on Mac/Linux** for the happy path (optional `pwsh` is fine, not required).
+### Windows
 
-### Why Python for the core (not “more PowerShell”)
-
-| Option | Pros | Cons |
-|--------|------|------|
-| **Python** (recommended) | WebSockets, audio libs, one codebase; easy on Mac/Linux/Win; great for a long-lived daemon | Extra runtime dependency |
-| PowerShell 7 (`pwsh`) everywhere | Reuse current scripts | Playback still OS-specific; weaker streaming ergonomics; less common on locked-down Linux |
-| Node.js | Good WS support | Heavier for a tiny daemon; another toolchain |
-| Pure bash + curl | Zero deps for REST | No good streaming daemon; fragile |
-
-Python wins for **optional daemon + streaming + multi-OS** with the least long-term glue.
-
----
-
-## Target architecture
-
-```text
-                    Grok / Claude Stop hook
-                              |
-                    host command (sh or ps1)
-                              |
-              +---------------v----------------+
-              |     ai-tts client (python)     |
-              |  - if mode=daemon: TCP 127.0.0.1|
-              |  - else: one-shot speak        |
-              +---------------+----------------+
-                              |
-              +---------------v----------------+
-              |  speak core (python)           |
-              |  - WebSocket stream (preferred)|
-              |  - REST fallback               |
-              +---------------+----------------+
-                              |
-         +--------------------+--------------------+
-         v                    v                    v
-   player/windows        player/macos         player/linux
-   (winmm / playsound)   (afplay)             (ffplay|paplay|aplay)
+```powershell
+cd ai-tts
+.\install.ps1 -Target Grok -Voice carina -Force
+# Python hooks are preferred when python is on PATH
+# Legacy: .\install.ps1 -LegacyPowerShellHooks
 ```
 
-### Daemon transport: localhost TCP
+### macOS / Linux
 
-Prefer:
-
-```text
-127.0.0.1:18765   (configurable)
+```bash
+cd ai-tts
+chmod +x install.sh
+./install.sh Grok
+# VOICE=eve FORCE=1 ENABLE_DAEMON=1 ./install.sh Both
 ```
 
-JSON lines (same as today):
-
-```text
--> {"text":"...","voice":"carina","language":"en","speed":1.0}
-<- {"ok":true,"ms":420}
-```
-
-**Why not keep named pipes as primary?**  
-They work on Windows but force a second code path on Unix (UDS). TCP localhost is boring and universal; firewalls almost never block loopback.
-
-Keep Windows named pipes only as a thin alias if needed for compatibility; new code should use TCP.
-
-### Playback matrix
-
-| OS | Primary | Fallback |
-|----|---------|----------|
-| Windows | winmm WAV (current) | `System.Speech`, or `ffplay` if present |
-| macOS | `afplay` (built-in) | `ffplay` |
-| Linux | `ffplay -nodisp -autoexit` (ffmpeg) | `paplay` (Pulse), `aplay` (ALSA) |
-
-Ship WAV/PCM from the API so players stay simple. Avoid MP3-only on Linux without ffmpeg.
-
-### Hook command generation
-
-Installer detects OS and writes:
-
-**Windows**
-
-```text
-powershell -NoProfile -ExecutionPolicy Bypass -File .../tts-stop.ps1
-```
-
-**macOS / Linux**
-
-```text
-python3 "$HOME/.ai-tts/bin/hook_stop.py"
-# or: "$HOME/.ai-tts/bin/ai-tts" stop-hook
-```
-
-SessionStart is the same idea (`hook_state.py` / `tts-state` equivalent).
-
-Skills that toggle markers stay as small shell/PowerShell snippets **or** a single `ai-tts toggle` CLI so `/tts` is one command on every OS.
+Requires **Python 3.10+**. Optional: `pip install --user 'websockets>=12.0'`.
 
 ---
 
-## Phased rollout
+## Runtime layout (`~/.ai-tts`)
 
-### Phase 0 — Documented (this file)
-
-- Agree on Python core + TCP daemon + dual installers.
-
-### Phase 1 — Portable one-shot (no daemon)
-
-- `python -m ai_tts speak "text"` using REST (or stream-to-temp-file).
-- Players: Windows (keep PS or call Python), macOS `afplay`, Linux `ffplay`.
-- `install.sh` for Grok hooks on Mac/Linux.
-- Windows keeps working; installer can prefer Python if available.
-
-**Exit criteria:** macOS user hears Carina without PowerShell.
-
-### Phase 2 — Portable optional daemon
-
-- `ai-tts daemon` listens on `127.0.0.1:18765`.
-- Client in Stop hook: connect → JSON line → return.
-- Config stays `mode: direct | daemon` (already in config shape).
-- Deprecate Windows-only named pipe (or wrap it to the same protocol).
-
-**Exit criteria:** daemon mode works on Win/Mac/Linux with one config schema.
-
-### Phase 3 — Polish
-
-- Streaming playback (play PCM before full utterance ends) where OS APIs allow.
-- `brew` / `pipx` / release binaries (PyInstaller) optional.
-- CI matrix: lint + dry-run install on ubuntu-latest, macos-latest, windows-latest.
+```text
+~/.ai-tts/
+  bin/ai-tts[.cmd]     # launcher
+  lib/ai_tts/          # Python package
+  config.json
+  docs/
+  (Windows also keeps speak.ps1 / common.ps1 fallbacks)
+```
 
 ---
 
-## Dependency policy
+## Usage
 
-**Required for portable core**
+```bash
+ai-tts probe
+ai-tts speak "Hello from Carina"
+ai-tts toggle --harness grok      # same as /tts
+ai-tts daemon --enable-config     # optional low-latency server
+ai-tts daemon-ping
+ai-tts daemon-stop
+```
 
-- Python 3.10+
-- stdlib first; add `websockets` (or use stdlib where enough) for streaming
-
-**Optional**
-
-- `ffmpeg` / `ffplay` on Linux (document; don’t bundle)
-- Windows: no extra deps if we keep winmm via a tiny helper or pure Python `winsound` for WAV
-
-**Avoid**
-
-- Hard dependency on PowerShell Core on Mac/Linux
-- Shipping large native audio engines
-
----
-
-## Config (unchanged shape, portable fields)
+Config (`mode: direct | daemon`):
 
 ```json
 {
   "voice": "carina",
-  "language": "en",
-  "speed": 1.0,
   "mode": "direct",
   "daemon": {
     "enabled": false,
@@ -199,38 +83,54 @@ Skills that toggle markers stay as small shell/PowerShell snippets **or** a sing
 }
 ```
 
-`pipeName` remains for Windows legacy; new installs prefer `host`/`port`.
+Daemon protocol (TCP JSON lines) — same as the design doc:
+
+```text
+-> {"text":"...","voice":"carina","language":"en","speed":1.0}
+<- {"ok":true,"ms":420,"transport":"stream"}
+```
 
 ---
 
-## Testing checklist per OS
+## Architecture
 
-- [ ] `ai-tts speak "hello"` with `XAI_API_KEY`
-- [ ] Install Grok hooks; SessionStart reports ON/OFF
-- [ ] `/tts` toggle marker under `~/.grok/.tts-dirs`
-- [ ] Stop speaks `<say>` in direct mode
-- [ ] Daemon start/stop; second utterance reuses connection
-- [ ] Fallback: daemon configured but down → direct still works
-
----
-
-## Non-goals (for now)
-
-- iOS / Android agents
-- Browser-only playback
-- Replacing Grok’s built-in **dictation** (`/voice`) — this project is **output** TTS only
+```text
+Stop hook -> ai-tts hook-stop
+                |
+         detach: ai-tts speak
+                |
+         mode=daemon? --yes--> TCP 127.0.0.1:18765
+                | no
+         stream WS (optional) else REST
+                |
+         play WAV (OS player)
+```
 
 ---
 
-## Decision summary
+## Linux notes
 
-| Decision | Choice |
-|----------|--------|
-| Shared runtime language | **Python 3** |
-| Optional daemon IPC | **localhost TCP** (not named pipes as primary) |
-| Playback | **OS tools** (`afplay` / `ffplay` / winmm) |
-| Installers | **`install.ps1` + `install.sh`** |
-| Default mode | **direct** (daemon stays optional) |
-| Windows compatibility | Keep working; gradually call into Python core |
+Install one of:
 
-Next implementation step when ready: **Phase 1** (`src/python` package + `install.sh` + macOS/Linux players) while leaving Windows PowerShell as a working backend until the Python path is proven.
+- `ffmpeg` (provides `ffplay`) — recommended  
+- `pulseaudio-utils` (`paplay`)  
+- `alsa-utils` (`aplay`)
+
+---
+
+## Phases completed
+
+| Phase | Status |
+|-------|--------|
+| 0 Plan | Done |
+| 1 Portable one-shot | Done (`speak`, players, installers) |
+| 2 TCP daemon | Done (`daemon` / client) |
+| 3 CI / stream-while-play | Future |
+
+---
+
+## Security
+
+- Daemon binds **localhost only** by default.  
+- Hooks run as your user.  
+- Never commit `XAI_API_KEY`.

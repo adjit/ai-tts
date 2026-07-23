@@ -32,18 +32,33 @@ Grok: [does the work, prints a normal reply]
 
 ---
 
-## Quick start (Grok Build) — recommended
+## Quick start
+
+### Windows
 
 ```powershell
 git clone <this-repo-url> ai-tts
 cd ai-tts
+.\install.ps1 -Target Grok -Voice carina -Force
 
-# Install into ~/.grok + shared ~/.ai-tts (default voice: carina)
-.\install.ps1 -Target Grok -Voice carina
-
-# Smoke-test the speaker
-powershell -File $env:USERPROFILE\.ai-tts\speak.ps1 -Text "Hello from Carina" -Voice carina
+# Smoke-test (Python portable core)
+& "$env:USERPROFILE\.ai-tts\bin\ai-tts.cmd" probe
+& "$env:USERPROFILE\.ai-tts\bin\ai-tts.cmd" speak "Hello from Carina"
 ```
+
+### macOS / Linux
+
+```bash
+git clone <this-repo-url> ai-tts
+cd ai-tts
+chmod +x install.sh
+./install.sh Grok
+
+~/.ai-tts/bin/ai-tts probe
+~/.ai-tts/bin/ai-tts speak "Hello from Carina"
+```
+
+Requires **Python 3.10+**. Optional streaming: `pip install --user 'websockets>=12.0'`.
 
 Then in Grok:
 
@@ -53,6 +68,8 @@ Then in Grok:
 4. Ask anything; the reply should end with `<say>...</say>` and you should hear Carina.
 
 Toggle off with `/tts` again. State is **per directory** and persists across sessions.
+
+Full multi-OS notes: [docs/platforms.md](docs/platforms.md).
 
 ### What Grok install drops
 
@@ -148,32 +165,29 @@ Re-install with a new default:
 
 ## Optional low-latency daemon
 
-Default **direct** mode spawns PowerShell per turn (simple, no background process).
+Default **direct** mode runs a short-lived speak process per turn (simple, no background process).
 
-For faster speech after each turn, enable the **optional daemon** (warm process + streaming WebSocket TTS):
+For faster speech, enable the **optional TCP daemon** (warm Python process + streaming TTS when `websockets` is installed):
 
-```powershell
-# Prefer daemon in config (does not start it yet)
-.\install.ps1 -Target Grok -EnableDaemon -Force
+```bash
+# Any OS — start daemon and set mode=daemon
+ai-tts daemon --enable-config
+# Windows: start in another window, or:
+# Start-Process ... ai-tts.cmd daemon --enable-config
 
-# Start the background worker (also sets mode=daemon)
-powershell -File $env:USERPROFILE\.ai-tts\scripts\daemon-start.ps1
-
-# Stop worker and return to direct mode
-powershell -File $env:USERPROFILE\.ai-tts\scripts\daemon-stop.ps1
+ai-tts daemon-ping
+ai-tts daemon-stop    # also sets mode=direct
 ```
-
-Or edit config only:
 
 | Setting | Effect |
 |---------|--------|
-| `"mode": "direct"` (default) | Spawn `speak.ps1` each turn |
-| `"mode": "daemon"` + daemon running | Named pipe → warm worker (~ms dispatch) |
-| `daemon.autoStart: true` | If pipe is down, Stop hook tries to start the daemon once |
+| `"mode": "direct"` (default) | One-shot speak per turn |
+| `"mode": "daemon"` + daemon running | TCP `127.0.0.1:18765` → warm worker |
+| `daemon.autoStart: true` | If server is down, Stop path tries to start it once |
 
-If daemon mode is on but the process is not running (and autoStart is off), hooks **fall back to direct** automatically.
+If daemon mode is on but the process is not running (and autoStart is off), speak **falls back to direct** automatically.
 
-Full details: [docs/daemon.md](docs/daemon.md).
+Windows also still ships a legacy named-pipe PowerShell daemon (`scripts/daemon-start.ps1`); prefer the Python TCP daemon.
 
 ---
 

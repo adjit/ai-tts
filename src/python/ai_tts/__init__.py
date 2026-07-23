@@ -1,3 +1,3 @@
-"""Portable ai-tts runtime (Phase 1+). See docs/platforms.md."""
+"""Portable ai-tts runtime for Grok Build and Claude Code."""
 
-__version__ = "0.0.0"  # scaffold — not released
+__version__ = "0.2.0"

@@ -45,6 +45,23 @@ function Get-AiTtsPipeName {
     return 'ai-tts'
 }
 
+function Get-AiTtsDaemonHost {
+    $cfg = Get-AiTtsConfig
+    if ($cfg -and $cfg.daemon -and $cfg.daemon.host) { return [string]$cfg.daemon.host }
+    return '127.0.0.1'
+}
+
+function Get-AiTtsDaemonPort {
+    $cfg = Get-AiTtsConfig
+    if ($cfg -and $cfg.daemon -and $null -ne $cfg.daemon.port) { return [int]$cfg.daemon.port }
+    return 18765
+}
+
+function Test-AiTtsPythonAvailable {
+    $cmd = Join-Path (Get-AiTtsHome) 'bin\ai-tts.cmd'
+    return (Test-Path -LiteralPath $cmd)
+}
+
 function Test-AiTtsDaemonAutoStart {
     $cfg = Get-AiTtsConfig
     if ($cfg -and $cfg.daemon -and $null -ne $cfg.daemon.autoStart) {
@@ -159,7 +176,37 @@ function Start-DetachedSpeak([string]$say) {
     Remove-Item $tmp -ErrorAction SilentlyContinue
 }
 
-function Send-AiTtsDaemonSpeak([string]$say) {
+function Send-AiTtsTcpDaemonSpeak([string]$say) {
+    $hostName = Get-AiTtsDaemonHost
+    $port = Get-AiTtsDaemonPort
+    $payload = (@{
+        text     = $say
+        voice    = Get-AiTtsVoice
+        language = Get-AiTtsLanguage
+        speed    = Get-AiTtsSpeed
+    } | ConvertTo-Json -Compress) + "`n"
+    $bytes = [Text.Encoding]::UTF8.GetBytes($payload)
+    $client = New-Object System.Net.Sockets.TcpClient
+    try {
+        $iar = $client.BeginConnect($hostName, $port, $null, $null)
+        if (-not $iar.AsyncWaitHandle.WaitOne(800)) { throw 'tcp connect timeout' }
+        $client.EndConnect($iar)
+        $stream = $client.GetStream()
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush()
+        $reader = New-Object System.IO.StreamReader($stream, [Text.Encoding]::UTF8)
+        $respLine = $reader.ReadLine()
+        if (-not $respLine) { throw 'daemon empty response' }
+        $resp = $respLine | ConvertFrom-Json
+        if (-not $resp.ok) { throw "daemon error: $($resp.error)" }
+        return $true
+    }
+    finally {
+        try { $client.Close() } catch {}
+    }
+}
+
+function Send-AiTtsNamedPipeSpeak([string]$say) {
     $pipeName = Get-AiTtsPipeName
     $payload = @{
         text     = $say
@@ -174,7 +221,7 @@ function Send-AiTtsDaemonSpeak([string]$say) {
             '.', $pipeName, [System.IO.Pipes.PipeDirection]::InOut,
             [System.IO.Pipes.PipeOptions]::None
         )
-        $client.Connect(800)
+        $client.Connect(400)
         $writer = New-Object System.IO.StreamWriter($client, [Text.Encoding]::UTF8, 1024, $true)
         $reader = New-Object System.IO.StreamReader($client, [Text.Encoding]::UTF8, $false, 1024, $true)
         $writer.AutoFlush = $true
@@ -187,6 +234,15 @@ function Send-AiTtsDaemonSpeak([string]$say) {
     }
     finally {
         if ($client) { try { $client.Dispose() } catch {} }
+    }
+}
+
+function Send-AiTtsDaemonSpeak([string]$say) {
+    # Prefer portable TCP daemon (Python); fall back to legacy Windows named pipe.
+    try {
+        return (Send-AiTtsTcpDaemonSpeak $say)
+    } catch {
+        return (Send-AiTtsNamedPipeSpeak $say)
     }
 }
 
@@ -217,6 +273,15 @@ function Start-AiTtsDaemonProcess {
 function Invoke-AiTtsSpeakRequest([string]$say) {
     if (-not $say) { return }
 
+    # Prefer Python launcher when installed (handles daemon + direct internally).
+    $pyCmd = Join-Path (Get-AiTtsHome) 'bin\ai-tts.cmd'
+    if (Test-Path -LiteralPath $pyCmd) {
+        try {
+            Start-Process -FilePath $pyCmd -WindowStyle Hidden -ArgumentList @('speak', '--', $say) | Out-Null
+            return
+        } catch {}
+    }
+
     if (Test-AiTtsDaemonEnabled) {
         try {
             [void](Send-AiTtsDaemonSpeak $say)
@@ -230,7 +295,6 @@ function Invoke-AiTtsSpeakRequest([string]$say) {
                     }
                 } catch {}
             }
-            # Fall through to direct path
         }
     }
 

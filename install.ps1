@@ -1,30 +1,31 @@
 <#
 .SYNOPSIS
-  Install ai-tts into Grok Build and/or Claude Code on Windows.
+  Install ai-tts into Grok Build and/or Claude Code (Windows).
+
+.DESCRIPTION
+  Installs the portable Python runtime (primary) plus legacy PowerShell
+  helpers. Hooks prefer Python when available.
 
 .EXAMPLE
-  .\install.ps1                  # Grok only (default)
-  .\install.ps1 -Target Both -Voice carina
-  .\install.ps1 -Target Claude -MergeClaudeSettings
+  .\install.ps1
+  .\install.ps1 -Target Both -Voice carina -MergeClaudeSettings
+  .\install.ps1 -EnableDaemon -Force
+  .\install.ps1 -LegacyPowerShellHooks   # use PS hooks instead of Python
 #>
 param(
     [ValidateSet('Grok', 'Claude', 'Both')]
     [string]$Target = 'Grok',
 
     [string]$Voice = 'carina',
-
     [string]$Language = 'en',
-
     [double]$Speed = 1.0,
 
     [switch]$MergeClaudeSettings,
-
     [switch]$Force,
-
-    # Opt into low-latency daemon mode in generated config (still start daemon separately).
     [switch]$EnableDaemon,
-
-    [switch]$AutoStartDaemon
+    [switch]$AutoStartDaemon,
+    [switch]$LegacyPowerShellHooks,
+    [string]$Python = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -48,18 +49,102 @@ function Copy-FileForced([string]$src, [string]$dst) {
     Copy-Item -LiteralPath $src -Destination $dst -Force
 }
 
+function Resolve-Python {
+    if ($Python) { return $Python }
+    foreach ($c in @('python', 'py', 'python3')) {
+        $cmd = Get-Command $c -ErrorAction SilentlyContinue
+        if ($cmd) {
+            if ($c -eq 'py') { return 'py -3' }
+            return $cmd.Source
+        }
+    }
+    return $null
+}
+
+function Invoke-Python([string]$py, [string[]]$pyArgs) {
+    if ($py -eq 'py -3') {
+        & py -3 @pyArgs
+    } else {
+        & $py @pyArgs
+    }
+}
+
 function Install-Shared {
     Write-Step "Installing shared runtime to $AiTtsHome"
     Ensure-Dir $AiTtsHome
     Ensure-Dir (Join-Path $AiTtsHome 'bin')
+    Ensure-Dir (Join-Path $AiTtsHome 'lib')
+    Ensure-Dir (Join-Path $AiTtsHome 'scripts')
+    Ensure-Dir (Join-Path $AiTtsHome 'docs')
 
+    # Legacy PowerShell runtime (fallback)
     Copy-FileForced (Join-Path $RepoRoot 'src\speak.ps1') (Join-Path $AiTtsHome 'speak.ps1')
     Copy-FileForced (Join-Path $RepoRoot 'src\speak-core.ps1') (Join-Path $AiTtsHome 'speak-core.ps1')
     Copy-FileForced (Join-Path $RepoRoot 'src\common.ps1') (Join-Path $AiTtsHome 'common.ps1')
     Copy-FileForced (Join-Path $RepoRoot 'src\daemon.ps1') (Join-Path $AiTtsHome 'daemon.ps1')
-    Ensure-Dir (Join-Path $AiTtsHome 'scripts')
     Copy-FileForced (Join-Path $RepoRoot 'scripts\daemon-start.ps1') (Join-Path $AiTtsHome 'scripts\daemon-start.ps1')
     Copy-FileForced (Join-Path $RepoRoot 'scripts\daemon-stop.ps1') (Join-Path $AiTtsHome 'scripts\daemon-stop.ps1')
+
+    # Python portable package
+    $libDst = Join-Path $AiTtsHome 'lib\ai_tts'
+    if (Test-Path $libDst) { Remove-Item $libDst -Recurse -Force }
+    Copy-Item -Path (Join-Path $RepoRoot 'src\python\ai_tts') -Destination $libDst -Recurse -Force
+    Write-Ok "Python package -> $libDst"
+
+    $py = Resolve-Python
+    $script:PythonExe = $py
+    if (-not $py) {
+        Write-Warn2 "Python 3.10+ not found. Install Python and re-run for multi-OS core."
+        Write-Warn2 "Falling back to PowerShell-only hooks."
+        $script:UsePythonHooks = $false
+    } else {
+        $script:UsePythonHooks = -not $LegacyPowerShellHooks
+        Write-Ok "Python: $py"
+        try {
+            Invoke-Python $py @('-c', 'import sys; assert sys.version_info >= (3,10)')
+        } catch {
+            Write-Warn2 "Python too old (need 3.10+); using PowerShell hooks"
+            $script:UsePythonHooks = $false
+        }
+        if ($script:UsePythonHooks) {
+            try {
+                Invoke-Python $py @('-c', 'import websockets') 2>$null
+                if ($LASTEXITCODE -ne 0) { throw 'no websockets' }
+                Write-Ok "websockets available"
+            } catch {
+                Write-Step "Installing optional websockets for streaming TTS"
+                try {
+                    if ($py -eq 'py -3') {
+                        py -3 -m pip install --user -q 'websockets>=12.0'
+                    } else {
+                        & $py -m pip install --user -q 'websockets>=12.0'
+                    }
+                    Write-Ok "websockets installed"
+                } catch {
+                    Write-Warn2 "pip install websockets failed - REST fallback only"
+                }
+            }
+        }
+    }
+
+    # Launchers (write as array so batch syntax never confuses the PowerShell parser)
+    $bin = Join-Path $AiTtsHome 'bin'
+    $cmdLines = @(
+        '@echo off'
+        'set "AI_TTS_HOME=%USERPROFILE%\.ai-tts"'
+        'set "PYTHONPATH=%AI_TTS_HOME%\lib;%PYTHONPATH%"'
+        'where py >nul 2>&1'
+        'if %ERRORLEVEL%==0 ('
+        '  py -3 -m ai_tts %*'
+        '  exit /b %ERRORLEVEL%'
+        ')'
+        'python -m ai_tts %*'
+    )
+    Set-Content -LiteralPath (Join-Path $bin 'ai-tts.cmd') -Value $cmdLines -Encoding ASCII
+    Write-Ok "launcher bin\ai-tts.cmd"
+
+    Get-ChildItem (Join-Path $RepoRoot 'docs\*.md') -ErrorAction SilentlyContinue |
+        ForEach-Object { Copy-Item $_.FullName (Join-Path $AiTtsHome "docs\$($_.Name)") -Force }
 
     $cfgPath = Join-Path $AiTtsHome 'config.json'
     if ((-not (Test-Path $cfgPath)) -or $Force) {
@@ -72,6 +157,8 @@ function Install-Shared {
             daemon   = [ordered]@{
                 enabled                  = [bool]$EnableDaemon
                 pipeName                 = 'ai-tts'
+                host                     = '127.0.0.1'
+                port                     = 18765
                 autoStart                = [bool]$AutoStartDaemon
                 optimizeStreamingLatency = 2
                 sampleRate               = 24000
@@ -80,9 +167,12 @@ function Install-Shared {
         ($cfg | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $cfgPath -Encoding UTF8
         Write-Ok "Wrote config.json (voice=$Voice mode=$mode)"
     } else {
-        Write-Warn2 "config.json already exists (use -Force to overwrite). Keeping existing."
-        # Always refresh binaries even when config is kept
+        Write-Warn2 "config.json exists (use -Force to overwrite). Keeping existing."
     }
+}
+
+function Get-AiTtsCmd {
+    return (Join-Path $AiTtsHome 'bin\ai-tts.cmd')
 }
 
 function Install-Grok {
@@ -93,172 +183,88 @@ function Install-Grok {
     Ensure-Dir (Join-Path $GrokHome 'rules')
     Ensure-Dir (Join-Path $GrokHome '.tts-dirs')
 
-    # Speak copy for fallback path resolution
     Copy-FileForced (Join-Path $AiTtsHome 'speak.ps1') (Join-Path $GrokHome 'speak.ps1')
 
-    $hooksSrc = Join-Path $RepoRoot 'grok\hooks'
     $hooksDst = Join-Path $GrokHome 'hooks'
+    $hooksSrc = Join-Path $RepoRoot 'grok\hooks'
     Copy-FileForced (Join-Path $hooksSrc 'tts-state.ps1') (Join-Path $hooksDst 'tts-state.ps1')
     Copy-FileForced (Join-Path $hooksSrc 'tts-stop.ps1') (Join-Path $hooksDst 'tts-stop.ps1')
 
-    $hooksFwd = ($hooksDst -replace '\\', '/')
-    $template = Get-Content -LiteralPath (Join-Path $hooksSrc 'tts.json.template') -Raw
-    $json = $template.Replace('__GROK_HOOKS__', $hooksFwd)
-    Set-Content -LiteralPath (Join-Path $hooksDst 'tts.json') -Value $json -Encoding UTF8
-    Write-Ok "Wrote hooks/tts.json"
+    if ($script:UsePythonHooks) {
+        $ai = (Get-AiTtsCmd) -replace '\\', '/'
+        $json = @"
+{
+  "description": "ai-tts (Python): SessionStart + Stop for xAI voice output",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$ai hook-state --harness grok",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$ai hook-stop --harness grok",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
+"@
+        Set-Content -LiteralPath (Join-Path $hooksDst 'tts.json') -Value $json -Encoding UTF8
+        Write-Ok "hooks/tts.json (Python)"
 
-    Copy-FileForced (Join-Path $RepoRoot 'grok\skills\tts\SKILL.md') (Join-Path $GrokHome 'skills\tts\SKILL.md')
+        $skill = @'
+---
+name: tts
+description: Toggle xAI voice output on or off for the CURRENT directory. Use when the user runs /tts.
+disable-model-invocation: true
+user-invocable: true
+---
+
+Toggle voice for the current working directory. Run this exact command with the shell tool:
+
+```
+& "$env:USERPROFILE\.ai-tts\bin\ai-tts.cmd" toggle --harness grok
+```
+
+Then report ON/OFF in one short line.
+- **TTS ON**: end each response with a concise `<say>...</say>` spoken summary (plain language).
+- **TTS OFF**: do not emit `<say>` markers.
+
+Voice is OFF by default per directory. State under `~/.grok/.tts-dirs/`.
+'@
+        Set-Content -LiteralPath (Join-Path $GrokHome 'skills\tts\SKILL.md') -Value $skill -Encoding UTF8
+    } else {
+        $hooksFwd = ($hooksDst -replace '\\', '/')
+        $template = Get-Content -LiteralPath (Join-Path $hooksSrc 'tts.json.template') -Raw
+        $json = $template.Replace('__GROK_HOOKS__', $hooksFwd)
+        Set-Content -LiteralPath (Join-Path $hooksDst 'tts.json') -Value $json -Encoding UTF8
+        Write-Ok "hooks/tts.json (PowerShell legacy)"
+        Copy-FileForced (Join-Path $RepoRoot 'grok\skills\tts\SKILL.md') (Join-Path $GrokHome 'skills\tts\SKILL.md')
+    }
+
     Copy-FileForced (Join-Path $RepoRoot 'grok\rules\voice-tts.md') (Join-Path $GrokHome 'rules\voice-tts.md')
-    Write-Ok "Skill /tts and rules/voice-tts.md installed"
+    Write-Ok "Skill /tts and rules installed"
 
     Write-Host ""
     Write-Host "Grok next steps:" -ForegroundColor White
-    Write-Host "  1. Set XAI_API_KEY (User or process env)."
-    Write-Host "  2. Start a new Grok session (or /hooks and reload)."
-    Write-Host "  3. Run /tts in a project directory to enable voice."
-    Write-Host "  4. Optional smoke test:"
-    Write-Host "     powershell -File `"$AiTtsHome\speak.ps1`" -Text `"Hello from Carina`" -Voice $Voice"
-    Write-Host "  5. Optional low-latency daemon (see README):"
-    Write-Host "     powershell -File `"$AiTtsHome\scripts\daemon-start.ps1`""
-}
-
-function Merge-ClaudeHooks {
-    $settingsPath = Join-Path $ClaudeHome 'settings.json'
-    $stateCmd = "powershell -NoProfile -ExecutionPolicy Bypass -File $((Join-Path $ClaudeHome 'hooks\tts-state.ps1') -replace '\\','/')"
-    $stopCmd = "powershell -NoProfile -ExecutionPolicy Bypass -File $((Join-Path $ClaudeHome 'hooks\tts-stop.ps1') -replace '\\','/')"
-
-    $settings = @{ permissions = @{}; hooks = @{} }
-    if (Test-Path $settingsPath) {
-        $backup = "$settingsPath.bak-ai-tts-$(Get-Date -Format 'yyyyMMddHHmmss')"
-        Copy-Item -LiteralPath $settingsPath -Destination $backup -Force
-        Write-Ok "Backed up settings.json → $backup"
-        $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
-    }
-
-    # Convert to mutable hashtables carefully via JSON round-trip
-    $obj = $settings | ConvertTo-Json -Depth 30 | ConvertFrom-Json
-
-    if (-not $obj.hooks) {
-        $obj | Add-Member -NotePropertyName hooks -NotePropertyValue ([pscustomobject]@{}) -Force
-    }
-
-    function Ensure-HookEvent($root, [string]$event, [string]$command) {
-        $hooksObj = $root.hooks
-        $list = @()
-        if ($hooksObj.PSObject.Properties.Name -contains $event -and $hooksObj.$event) {
-            $list = @($hooksObj.$event)
-        }
-
-        $already = $false
-        foreach ($group in $list) {
-            if ($group.hooks) {
-                foreach ($h in @($group.hooks)) {
-                    if ($h.command -and ($h.command -like '*tts-state.ps1*' -or $h.command -like '*tts-stop.ps1*') -and $h.command -like "*$($command.Split('/')[-1])*") {
-                        $already = $true
-                    }
-                    if ($h.command -eq $command) { $already = $true }
-                }
-            }
-        }
-
-        if (-not $already) {
-            $entry = [pscustomobject]@{
-                matcher = ''
-                hooks   = @([pscustomobject]@{ type = 'command'; command = $command })
-            }
-            # Prefer appending to an existing empty-matcher group if present
-            $appended = $false
-            for ($i = 0; $i -lt $list.Count; $i++) {
-                $g = $list[$i]
-                $m = ''
-                if ($g.PSObject.Properties.Name -contains 'matcher') { $m = [string]$g.matcher }
-                if ($m -eq '' -or $m -eq $null) {
-                    $existing = @($g.hooks)
-                    # skip if same tts hook type already in this group
-                    $dup = $false
-                    foreach ($h in $existing) {
-                        if ($h.command -and $h.command -like "*$((Split-Path $command -Leaf))*") { $dup = $true }
-                    }
-                    if (-not $dup) {
-                        $g.hooks = @($existing + [pscustomobject]@{ type = 'command'; command = $command })
-                        $list[$i] = $g
-                        $appended = $true
-                        break
-                    } else {
-                        $appended = $true
-                        break
-                    }
-                }
-            }
-            if (-not $appended) {
-                $list = @($list + $entry)
-            }
-        }
-
-        $hooksObj | Add-Member -NotePropertyName $event -NotePropertyValue $list -Force
-    }
-
-    # Rebuild hooks as a pure PSCustomObject we can rewrite
-    $hookMap = [ordered]@{}
-    if ($obj.hooks) {
-        foreach ($p in $obj.hooks.PSObject.Properties) {
-            $hookMap[$p.Name] = @($p.Value)
-        }
-    }
-
-    function Add-Cmd([hashtable]$map, [string]$event, [string]$command, [string]$leaf) {
-        $list = @()
-        if ($map.Contains($event)) { $list = @($map[$event]) }
-
-        $exists = $false
-        foreach ($group in $list) {
-            if (-not $group.hooks) { continue }
-            foreach ($h in @($group.hooks)) {
-                if ($h.command -and ($h.command -like "*$leaf*")) { $exists = $true }
-            }
-        }
-        if ($exists) { $map[$event] = $list; return }
-
-        if ($list.Count -gt 0) {
-            $g0 = $list[0]
-            $hooks = @()
-            if ($g0.hooks) { $hooks = @($g0.hooks) }
-            $hooks += [pscustomobject]@{ type = 'command'; command = $command }
-            $list[0] = [pscustomobject]@{
-                matcher = $(if ($g0.PSObject.Properties.Name -contains 'matcher') { $g0.matcher } else { '' })
-                hooks   = $hooks
-            }
-            # preserve rest
-            if ($list.Count -gt 1) {
-                $list = @($list[0]) + $list[1..($list.Count - 1)]
-            }
-        } else {
-            $list = @(
-                [pscustomobject]@{
-                    matcher = ''
-                    hooks   = @([pscustomobject]@{ type = 'command'; command = $command })
-                }
-            )
-        }
-        $map[$event] = $list
-    }
-
-    Add-Cmd $hookMap 'SessionStart' $stateCmd 'tts-state.ps1'
-    Add-Cmd $hookMap 'Stop' $stopCmd 'tts-stop.ps1'
-
-    $hooksOut = [pscustomobject]@{}
-    foreach ($k in $hookMap.Keys) {
-        $hooksOut | Add-Member -NotePropertyName $k -NotePropertyValue $hookMap[$k] -Force
-    }
-    if ($obj.PSObject.Properties.Name -contains 'hooks') {
-        $obj.hooks = $hooksOut
-    } else {
-        $obj | Add-Member -NotePropertyName hooks -NotePropertyValue $hooksOut -Force
-    }
-
-    $json = $obj | ConvertTo-Json -Depth 30
-    Set-Content -LiteralPath $settingsPath -Value $json -Encoding UTF8
-    Write-Ok "Merged TTS hooks into $settingsPath"
+    Write-Host "  1. Set User-level XAI_API_KEY"
+    Write-Host "  2. New Grok session (or /hooks reload)"
+    Write-Host "  3. /tts in a project"
+    Write-Host "  4. Smoke:  $AiTtsHome\bin\ai-tts.cmd probe"
+    Write-Host "            $AiTtsHome\bin\ai-tts.cmd speak `"Hello from Carina`""
+    Write-Host "  5. Optional daemon:  $AiTtsHome\bin\ai-tts.cmd daemon --enable-config"
 }
 
 function Install-Claude {
@@ -270,42 +276,73 @@ function Install-Claude {
     Ensure-Dir (Join-Path $ClaudeHome '.tts-dirs')
 
     Copy-FileForced (Join-Path $AiTtsHome 'speak.ps1') (Join-Path $ClaudeHome 'speak.ps1')
-
     $hooksSrc = Join-Path $RepoRoot 'claude\hooks'
-    $hooksDst = Join-Path $ClaudeHome 'hooks'
-    Copy-FileForced (Join-Path $hooksSrc 'tts-state.ps1') (Join-Path $hooksDst 'tts-state.ps1')
-    Copy-FileForced (Join-Path $hooksSrc 'tts-stop.ps1') (Join-Path $hooksDst 'tts-stop.ps1')
-
-    Copy-FileForced (Join-Path $RepoRoot 'claude\skills\tts\SKILL.md') (Join-Path $ClaudeHome 'skills\tts\SKILL.md')
+    Copy-FileForced (Join-Path $hooksSrc 'tts-state.ps1') (Join-Path $ClaudeHome 'hooks\tts-state.ps1')
+    Copy-FileForced (Join-Path $hooksSrc 'tts-stop.ps1') (Join-Path $ClaudeHome 'hooks\tts-stop.ps1')
     Copy-FileForced (Join-Path $RepoRoot 'claude\rules\voice-tts.md') (Join-Path $ClaudeHome 'rules\voice-tts.md')
-    Write-Ok "Skill /tts, hooks, and rules installed"
 
-    if ($MergeClaudeSettings) {
-        Merge-ClaudeHooks
+    if ($script:UsePythonHooks) {
+        $skill = @'
+---
+name: tts
+description: Toggle xAI voice output on or off for the CURRENT directory.
+disable-model-invocation: true
+---
+
+Run:
+
+```
+& "$env:USERPROFILE\.ai-tts\bin\ai-tts.cmd" toggle --harness claude
+```
+
+Report ON/OFF. When ON, end replies with `<say>...</say>`.
+'@
+        Set-Content -LiteralPath (Join-Path $ClaudeHome 'skills\tts\SKILL.md') -Value $skill -Encoding UTF8
+        $ai = (Get-AiTtsCmd) -replace '\\', '/'
+        $snippet = @"
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "$ai hook-state --harness claude" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "$ai hook-stop --harness claude" }
+        ]
+      }
+    ]
+  }
+}
+"@
+        Set-Content -LiteralPath (Join-Path $AiTtsHome 'claude-settings.hooks.snippet.json') -Value $snippet -Encoding UTF8
     } else {
-        $hooksFwd = ((Join-Path $ClaudeHome 'hooks') -replace '\\', '/')
-        $snippet = Get-Content -LiteralPath (Join-Path $RepoRoot 'claude\settings.hooks.snippet.json') -Raw
-        $snippet = $snippet.Replace('__CLAUDE_HOOKS__', $hooksFwd)
-        $outSnippet = Join-Path $AiTtsHome 'claude-settings.hooks.snippet.json'
-        Set-Content -LiteralPath $outSnippet -Value $snippet -Encoding UTF8
-        Write-Warn2 "Did not modify ~/.claude/settings.json"
-        Write-Host "  Merge hooks manually from: $outSnippet"
-        Write-Host "  Or re-run: .\install.ps1 -Target Claude -MergeClaudeSettings"
+        Copy-FileForced (Join-Path $RepoRoot 'claude\skills\tts\SKILL.md') (Join-Path $ClaudeHome 'skills\tts\SKILL.md')
     }
 
-    Write-Host ""
-    Write-Host "Claude next steps:" -ForegroundColor White
-    Write-Host "  1. Ensure SessionStart + Stop hooks point at tts-state.ps1 / tts-stop.ps1."
-    Write-Host "  2. Optionally append claude/rules/voice-tts.md into CLAUDE.md."
-    Write-Host "  3. Restart Claude Code, then run /tts in a project."
+    if ($MergeClaudeSettings -and $script:UsePythonHooks) {
+        Write-Warn2 "Merge Claude settings manually from $AiTtsHome\claude-settings.hooks.snippet.json (auto-merge left optional)."
+    } elseif ($MergeClaudeSettings) {
+        Write-Warn2 "Legacy PS Claude merge not re-run; use Python snippet or prior settings."
+    } else {
+        Write-Warn2 "Claude hooks snippet: $AiTtsHome\claude-settings.hooks.snippet.json"
+    }
+    Write-Ok "Claude skill/rules installed"
 }
 
 # --- main ---
-Write-Host "ai-tts installer" -ForegroundColor Magenta
+Write-Host "ai-tts installer (Windows)" -ForegroundColor Magenta
 Write-Host "  Target : $Target"
 Write-Host "  Voice  : $Voice"
 Write-Host ""
 
+$script:UsePythonHooks = $true
 Install-Shared
 
 if ($Target -eq 'Grok' -or $Target -eq 'Both') { Install-Grok }
