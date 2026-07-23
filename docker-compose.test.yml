@@ -1,0 +1,11 @@
+services:
+  test:
+    build: .
+    image: ai-tts-test:local
+    environment:
+      # Leave unset for unit tests; set to run live optional tests:
+      # RUN_LIVE_TTS: "1"
+      # XAI_API_KEY: ${XAI_API_KEY:-}
+      PYTHONPATH: /app/src/python
+    # Unit tests by default
+    command: ["pytest", "-q", "--ignore=tests/test_live_optional.py"]

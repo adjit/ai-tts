@@ -294,6 +294,36 @@ ai-tts/
 
 ---
 
+## Tests
+
+Unit tests mock the xAI API and never touch your real home directory.
+
+```powershell
+# Windows local
+.\scripts\run-tests.ps1
+
+# Linux container (independent of host OS)
+.\scripts\run-tests.ps1 -Docker
+```
+
+```bash
+# macOS / Linux local
+chmod +x scripts/run-tests.sh
+./scripts/run-tests.sh
+
+# Linux container
+./scripts/run-tests.sh --docker
+```
+
+```bash
+# Optional live call (real API + speakers)
+RUN_LIVE_TTS=1 XAI_API_KEY=... ./scripts/run-tests.sh --live
+```
+
+CI: `.github/workflows/test.yml` runs unit tests on Ubuntu, Windows, and macOS, plus a Docker Linux job.
+
+---
+
 ## Porting checklist (another machine)
 
 - [ ] Clone this repo  

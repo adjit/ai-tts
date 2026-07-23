@@ -13,3 +13,17 @@ Thumbs.db
 # Install leftovers
 *.bak
 *.bak-ai-tts-*
+
+# Python / tests
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+*.log
