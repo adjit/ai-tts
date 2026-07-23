@@ -28,11 +28,16 @@ export PYTHONPATH=src/python
 # Rung 2 — product smoke (probe + hook-state; speak if key set)
 ./scripts/smoke.sh
 
+# Post-install checks (not a substitute for pytest)
+python -m ai_tts doctor
+
 # Rung 3 — live API (optional)
 # RUN_LIVE_TTS=1 XAI_API_KEY=... ./scripts/run-tests.sh --live
 ```
 
 Full ladder and DoD: [docs/testing.md](docs/testing.md).
+
+CLI surface for agents/users: `doctor`, `config`, `status`, `voices`, `uninstall` (see README).
 
 ## Architecture
 

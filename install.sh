@@ -66,6 +66,26 @@ EOF
 chmod +x "$LAUNCHER"
 ok "launcher $LAUNCHER"
 
+# PATH helper: env.sh + optional ~/.local/bin symlink
+ENV_SH="$AI_TTS_HOME/env.sh"
+cat >"$ENV_SH" <<EOF
+# ai-tts PATH fragment — add to ~/.zprofile or ~/.bashrc:
+#   source $ENV_SH
+export PATH="$AI_TTS_HOME/bin:\$PATH"
+EOF
+ok "env fragment $ENV_SH"
+
+LOCAL_BIN="${HOME}/.local/bin"
+if mkdir -p "$LOCAL_BIN" 2>/dev/null; then
+  if ln -sfn "$LAUNCHER" "$LOCAL_BIN/ai-tts" 2>/dev/null; then
+    ok "symlink $LOCAL_BIN/ai-tts -> $LAUNCHER"
+  else
+    warn "could not symlink into $LOCAL_BIN (use: source $ENV_SH)"
+  fi
+else
+  warn "could not create $LOCAL_BIN — source $ENV_SH to put ai-tts on PATH"
+fi
+
 # Config
 CFG="$AI_TTS_HOME/config.json"
 MODE="direct"
@@ -258,9 +278,12 @@ esac
 
 echo ""
 echo "Next steps:"
-echo "  1. export XAI_API_KEY=...  (login shell / profile)"
-echo "  2. Smoke:  $AI_TTS_BIN probe"
+echo "  1. export XAI_API_KEY=...  (login shell / profile — see https://console.x.ai )"
+echo "  2. PATH (pick one):"
+echo "       source $ENV_SH"
+echo "       # or ensure ~/.local/bin is on PATH (symlink installed if possible)"
+echo "  3. Health:  $AI_TTS_BIN doctor"
 echo "             $AI_TTS_BIN speak \"Hello from Carina\""
-echo "  3. Optional daemon:  $AI_TTS_BIN daemon --enable-config &"
 echo "  4. New Grok session, then /tts in a project"
+echo "  Uninstall: $AI_TTS_BIN uninstall   # or ./uninstall.sh"
 echo "Done."

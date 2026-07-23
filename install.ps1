@@ -151,6 +151,23 @@ function Install-Shared {
     Set-Content -LiteralPath (Join-Path $bin 'ai-tts.cmd') -Value $cmdLines -Encoding ASCII
     Write-Ok "launcher bin\ai-tts.cmd"
 
+    # User PATH: add %USERPROFILE%\.ai-tts\bin if missing (new terminals)
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $parts = @()
+    if ($userPath) { $parts = $userPath -split ';' | Where-Object { $_ } }
+    $already = $parts | Where-Object { $_.TrimEnd('\') -ieq $bin.TrimEnd('\') }
+    if (-not $already) {
+        try {
+            $newPath = if ($userPath) { $userPath.TrimEnd(';') + ';' + $bin } else { $bin }
+            [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+            Write-Ok "added $bin to User PATH (new terminals)"
+        } catch {
+            Write-Warn2 "could not update User PATH; add $bin manually"
+        }
+    } else {
+        Write-Ok "User PATH already includes $bin"
+    }
+
     Get-ChildItem (Join-Path $RepoRoot 'docs\*.md') -ErrorAction SilentlyContinue |
         ForEach-Object { Copy-Item $_.FullName (Join-Path $AiTtsHome "docs\$($_.Name)") -Force }
 
@@ -268,13 +285,12 @@ Voice is OFF by default per directory. State under `~/.grok/.tts-dirs/`.
 
     Write-Host ""
     Write-Host "Grok next steps:" -ForegroundColor White
-    Write-Host "  1. Set User-level XAI_API_KEY"
-    Write-Host "  2. New Grok session (or /hooks reload)"
-    Write-Host "  3. /tts in a project"
-    Write-Host "  4. Smoke:  $AiTtsHome\bin\ai-tts.cmd probe"
-    Write-Host "            $AiTtsHome\bin\ai-tts.cmd speak `"Hello from Carina`""
-    Write-Host "  5. Optional daemon:  $AiTtsHome\bin\ai-tts.cmd daemon --enable-config"
-    Write-Host "  (PowerShell speak.ps1 / named-pipe daemon are DEPRECATED — use Python.)"
+    Write-Host "  1. Set User-level XAI_API_KEY (https://console.x.ai )"
+    Write-Host "  2. New terminal so PATH + key apply"
+    Write-Host "  3. $AiTtsHome\bin\ai-tts.cmd doctor"
+    Write-Host "  4. $AiTtsHome\bin\ai-tts.cmd speak `"Hello from Carina`""
+    Write-Host "  5. New Grok session, then /tts in a project"
+    Write-Host "  Uninstall: uninstall.ps1 or ai-tts uninstall"
 }
 
 function Install-Claude {

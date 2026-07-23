@@ -42,54 +42,49 @@ Grok: [does the work, prints a normal reply]
 
 ## Quick start
 
-### Windows
+1. Get an API key from [console.x.ai](https://console.x.ai) → set `XAI_API_KEY` (login / User env so hooks see it).
+2. Install, health-check, speak:
 
-```powershell
-git clone <this-repo-url> ai-tts
-cd ai-tts
-.\install.ps1 -Target Grok -Voice carina -Force
-
-& "$env:USERPROFILE\.ai-tts\bin\ai-tts.cmd" probe
-& "$env:USERPROFILE\.ai-tts\bin\ai-tts.cmd" speak "Hello from Carina"
-```
-
-`-LegacyPowerShellHooks` is **deprecated** (old Windows PowerShell hooks). Do not use for new setups.
-
-### macOS / Linux
+**macOS / Linux**
 
 ```bash
-git clone <this-repo-url> ai-tts
-cd ai-tts
-chmod +x install.sh
+git clone <this-repo-url> ai-tts && cd ai-tts
+chmod +x install.sh uninstall.sh
 ./install.sh Grok
-# VOICE=eve FORCE=1 ./install.sh Both
-
-~/.ai-tts/bin/ai-tts probe
-~/.ai-tts/bin/ai-tts speak "Hello from Carina"
+# PATH: source ~/.ai-tts/env.sh   # or use ~/.local/bin/ai-tts symlink
+ai-tts doctor
+ai-tts speak "Hello from Carina"
 ```
 
-### After install (any OS)
+**Windows**
 
-1. **New agent session** (or reload hooks) so SessionStart/Stop load.
-2. Open a project directory.
-3. Run **`/tts`** → should report `TTS ON`.
-4. Ask anything; the reply should end with `<say>...</say>` and you should hear speech.
+```powershell
+git clone <this-repo-url> ai-tts; cd ai-tts
+.\install.ps1 -Target Grok -Voice carina -Force
+# New terminal so User PATH picks up %USERPROFILE%\.ai-tts\bin
+ai-tts doctor
+ai-tts speak "Hello from Carina"
+```
 
-Toggle off with `/tts` again. State is **per directory** and persists across sessions.
+3. **New agent session** → open a project → **`/tts`** → ask something; you should hear the `<say>` line.
 
-More detail: [docs/platforms.md](docs/platforms.md) · [docs/architecture.md](docs/architecture.md) · [docs/voices.md](docs/voices.md)
+Toggle off with `/tts` again (per directory).  
+Full path still works if PATH is not set: `~/.ai-tts/bin/ai-tts` or `%USERPROFILE%\.ai-tts\bin\ai-tts.cmd`.
+
+More detail: [docs/platforms.md](docs/platforms.md) · [docs/architecture.md](docs/architecture.md) · [docs/voices.md](docs/voices.md) · [docs/testing.md](docs/testing.md)
 
 ---
 
 ## CLI reference
 
-After install, the launcher is:
-
-- Windows: `%USERPROFILE%\.ai-tts\bin\ai-tts.cmd`
-- macOS/Linux: `~/.ai-tts/bin/ai-tts`
-
 ```text
-ai-tts probe                          # players, config, API key, streaming
+ai-tts doctor                         # post-install health + fix hints
+ai-tts setup                          # alias for doctor
+ai-tts probe                          # compact players / config / key
+ai-tts status                         # TTS on/off for cwd + daemon
+ai-tts config                         # show config.json
+ai-tts config set voice eve           # voice | language | speed | mode
+ai-tts voices                         # known voice ids
 ai-tts speak "Hello"                  # one-shot TTS + play
 ai-tts speak --transport rest "..."   # force REST (no WebSocket)
 ai-tts toggle --harness grok          # same as /tts for Grok
@@ -97,6 +92,7 @@ ai-tts toggle --harness claude        # Claude marker root
 ai-tts daemon --enable-config         # optional low-latency TCP server
 ai-tts daemon-ping
 ai-tts daemon-stop
+ai-tts uninstall [--remove-config] [--remove-markers]
 ai-tts hook-state --harness grok      # used by SessionStart
 ai-tts hook-stop --harness grok       # used by Stop
 ```
@@ -105,7 +101,7 @@ From a repo checkout without installing:
 
 ```bash
 export PYTHONPATH=src/python   # Windows: set PYTHONPATH=src\python
-python -m ai_tts probe
+python -m ai_tts doctor
 ```
 
 ---
@@ -340,7 +336,7 @@ CI: `.github/workflows/test.yml` runs unit tests on Ubuntu, Windows, and macOS, 
 - [ ] Install **Python 3.10+**  
 - [ ] Set `XAI_API_KEY` (User/login env)  
 - [ ] `.\install.ps1 -Target Grok` **or** `./install.sh Grok`  
-- [ ] `ai-tts probe` then `ai-tts speak "Hello"`  
+- [ ] `ai-tts doctor` then `ai-tts speak "Hello"`  
 - [ ] New Grok/Claude session → `/tts` → hear speech  
 - [ ] Optional: `ai-tts daemon --enable-config` for lower latency  
 - [ ] Optional: `pip install --user 'websockets>=12.0'` for streaming  
@@ -356,13 +352,13 @@ Install one of: `ffmpeg` (`ffplay`), `paplay`, or `aplay`.
 ```powershell
 .\uninstall.ps1 -Target Both
 .\uninstall.ps1 -Target Both -RemoveConfig -RemoveMarkers
+# or: ai-tts uninstall --remove-config --remove-markers
 ```
 
-On macOS/Linux, remove install artifacts manually if needed:
-
 ```bash
-rm -rf ~/.ai-tts ~/.grok/hooks/tts.json ~/.grok/skills/tts ~/.grok/rules/voice-tts.md
-# and Claude equivalents if installed
+./uninstall.sh Both
+./uninstall.sh Both --remove-config --remove-markers
+# or: ai-tts uninstall --remove-config --remove-markers
 ```
 
 ---
