@@ -31,10 +31,8 @@ except ImportError:  # pragma: no cover - exercised via plain fallback tests
     Console = None  # type: ignore[misc, assignment]
 
 
-def _console() -> Any:
-    if not _RICH:
-        return None
-    theme = Theme(
+def _theme() -> Any:
+    return Theme(
         {
             "info": "cyan",
             "ok": "bold green",
@@ -44,7 +42,18 @@ def _console() -> Any:
             "title": "bold magenta",
         }
     )
-    return Console(theme=theme, highlight=False)
+
+
+def _console(*, stderr: bool = False) -> Any:
+    """Rich Console. Use stderr=True when stdout is captured (e.g. eval \"$(wizard)\")."""
+    if not _RICH:
+        return None
+    return Console(theme=_theme(), highlight=False, stderr=stderr)
+
+
+def _ui_print(msg: str = "", *, stderr: bool = False) -> None:
+    """Plain-text print for fallback UI (respect stderr for shell capture)."""
+    print(msg, file=sys.stderr if stderr else sys.stdout)
 
 
 def cmd_banner(args: argparse.Namespace) -> int:
@@ -172,14 +181,42 @@ def _pick_from_list(
     *,
     default: str,
     descriptions: dict[str, str] | None = None,
+    stderr: bool = False,
 ) -> str:
     descriptions = descriptions or {}
-    c = _console()
+    c = _console(stderr=stderr)
     default = default if default in options else options[0]
 
-    if c is None or not sys.stdin.isatty():
-        # Non-interactive / plain: keep default
+    if not sys.stdin.isatty():
+        # Non-interactive: keep default (no prompts)
         return default
+
+    if c is None:
+        # Plain interactive fallback on stderr when shell-capturing stdout
+        out = sys.stderr if stderr else sys.stdout
+        print(file=out)
+        print(label, file=out)
+        for i, opt in enumerate(options, 1):
+            mark = " (default)" if opt == default else ""
+            desc = descriptions.get(opt, "")
+            extra = f" — {desc}" if desc else ""
+            print(f"  {i}. {opt}{mark}{extra}", file=out)
+        while True:
+            try:
+                raw = input(
+                    f"Choice [{options.index(default) + 1}]: "
+                ).strip()
+            except EOFError:
+                return default
+            if not raw:
+                return default
+            if raw in options:
+                return raw
+            if raw.isdigit():
+                idx = int(raw)
+                if 1 <= idx <= len(options):
+                    return options[idx - 1]
+            print("Pick a number or exact name from the list.", file=out)
 
     c.print()
     c.print(Text(label, style="bold"))
@@ -193,6 +230,7 @@ def _pick_from_list(
         raw = Prompt.ask(
             "Choice",
             default=str(options.index(default) + 1),
+            console=c,
         ).strip()
         if not raw:
             return default
@@ -206,7 +244,17 @@ def _pick_from_list(
 
 
 def cmd_wizard(args: argparse.Namespace) -> int:
-    """Interactive choices → print shell exports or JSON."""
+    """Interactive choices → print shell exports or JSON.
+
+    When ``--export-shell`` is set, *all* UI goes to **stderr** so bash can safely:
+
+        eval "$(python -m ai_tts.install_ui wizard --export-shell)"
+
+    Only ``KEY=value`` lines are written to stdout.
+    """
+    # stdout is captured by install.sh — never draw the wizard there.
+    ui_err = bool(args.export_shell)
+
     targets = ["Grok", "Claude", "Both"]
     target_desc = {
         "Grok": "Grok Build hooks + /tts skill",
@@ -220,7 +268,7 @@ def cmd_wizard(args: argparse.Namespace) -> int:
         for v in voices
     }
 
-    c = _console()
+    c = _console(stderr=ui_err)
     if c is not None:
         c.print(
             Panel.fit(
@@ -231,7 +279,7 @@ def cmd_wizard(args: argparse.Namespace) -> int:
             )
         )
     else:
-        print("ai-tts interactive install (plain mode)")
+        _ui_print("ai-tts interactive install (plain mode)", stderr=ui_err)
 
     default_target = args.default_target or "Grok"
     default_voice = args.default_voice or "carina"
@@ -240,26 +288,44 @@ def cmd_wizard(args: argparse.Namespace) -> int:
         targets,
         default=default_target,
         descriptions=target_desc,
+        stderr=ui_err,
     )
     voice = _pick_from_list(
         "Default voice",
         voices,
         default=default_voice if default_voice in voices else "carina",
         descriptions=voice_desc,
+        stderr=ui_err,
     )
 
     enable_daemon = False
-    if c is not None and sys.stdin.isatty():
-        enable_daemon = Confirm.ask(
-            "Enable low-latency daemon mode in config?",
-            default=False,
-        )
     force = False
-    if c is not None and sys.stdin.isatty():
-        force = Confirm.ask(
-            "Overwrite existing config.json if present?",
-            default=False,
-        )
+    if sys.stdin.isatty():
+        if c is not None:
+            enable_daemon = Confirm.ask(
+                "Enable low-latency daemon mode in config?",
+                default=False,
+                console=c,
+            )
+            force = Confirm.ask(
+                "Overwrite existing config.json if present?",
+                default=False,
+                console=c,
+            )
+        else:
+            out = sys.stderr if ui_err else sys.stdout
+            try:
+                raw = input("Enable low-latency daemon mode in config? [y/N]: ").strip().lower()
+            except EOFError:
+                raw = ""
+            enable_daemon = raw in {"y", "yes", "1"}
+            try:
+                raw = input("Overwrite existing config.json if present? [y/N]: ").strip().lower()
+            except EOFError:
+                raw = ""
+            force = raw in {"y", "yes", "1"}
+            # silence unused
+            _ = out
 
     result = {
         "TARGET": target,
@@ -269,8 +335,8 @@ def cmd_wizard(args: argparse.Namespace) -> int:
     }
 
     if args.export_shell:
+        # ONLY machine-readable exports on stdout (for eval)
         for k, v in result.items():
-            # Safe for eval in bash (values are controlled)
             print(f"{k}={shlex_quote(v)}")
         return 0
 
@@ -278,7 +344,7 @@ def cmd_wizard(args: argparse.Namespace) -> int:
         print(json.dumps(result))
         return 0
 
-    # Human summary
+    # Human summary (stdout — not captured)
     if c is None:
         print(result)
     else:

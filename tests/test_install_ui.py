@@ -51,10 +51,16 @@ def test_wizard_export_shell_non_tty(monkeypatch, capsys):
         )
         == 0
     )
-    out = capsys.readouterr().out
+    captured = capsys.readouterr()
+    out = captured.out
+    # stdout must be ONLY shell exports (safe for eval "$(...)")
     assert "TARGET=Both" in out
     assert "VOICE=eve" in out
     assert "ENABLE_DAEMON=" in out
+    for line in out.strip().splitlines():
+        assert "=" in line
+        assert not line.startswith("→")
+        assert "interactive" not in line.lower()
 
 
 def test_wizard_json(monkeypatch, capsys):
