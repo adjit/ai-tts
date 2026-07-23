@@ -28,8 +28,8 @@ $AiTtsHome = Join-Path $env:USERPROFILE '.ai-tts'
 $GrokHome = Join-Path $env:USERPROFILE '.grok'
 $ClaudeHome = Join-Path $env:USERPROFILE '.claude'
 
-function Write-Step($msg) { Write-Host "→ $msg" -ForegroundColor Cyan }
-function Write-Ok($msg) { Write-Host "  ✓ $msg" -ForegroundColor Green }
+function Write-Step($msg) { Write-Host "-> $msg" -ForegroundColor Cyan }
+function Write-Ok($msg) { Write-Host "  OK $msg" -ForegroundColor Green }
 function Write-Warn2($msg) { Write-Host "  ! $msg" -ForegroundColor Yellow }
 
 function Ensure-Dir([string]$path) {
