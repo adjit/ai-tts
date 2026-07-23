@@ -1,0 +1,6 @@
+{
+  "voice": "carina",
+  "language": "en",
+  "speed": 1.0,
+  "comment": "Copy to %USERPROFILE%\\.ai-tts\\config.json after install, or pass -Voice to install.ps1. Voices: carina, ara, eve, leo, rex, sal, luna, iris, celeste, altair, atlas, ..."
+}

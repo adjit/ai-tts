@@ -1,0 +1,15 @@
+# Local config / secrets
+config.json
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Install leftovers
+*.bak
+*.bak-ai-tts-*

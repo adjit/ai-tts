@@ -1,0 +1,27 @@
+{
+  "description": "ai-tts: xAI voice output — SessionStart reports per-directory state; Stop speaks <say> lines",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File __GROK_HOOKS__/tts-state.ps1",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File __GROK_HOOKS__/tts-stop.ps1",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
