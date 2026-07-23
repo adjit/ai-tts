@@ -50,7 +50,15 @@ Grok: [does the work, prints a normal reply]
 ```bash
 git clone <this-repo-url> ai-tts && cd ai-tts
 chmod +x install.sh uninstall.sh
-./install.sh Grok
+
+# Interactive (TTY): pick target + voice with a Rich UI
+./install.sh
+
+# Or non-interactive / CI:
+# ./install.sh Grok
+# VOICE=eve FORCE=1 ./install.sh Both
+# AI_TTS_INSTALL_NONINTERACTIVE=1 ./install.sh
+
 # PATH: source ~/.ai-tts/env.sh   # or use ~/.local/bin/ai-tts symlink
 ai-tts doctor
 ai-tts speak "Hello from Carina"

@@ -24,6 +24,7 @@ REQUIRED = [
     "src/python/ai_tts/voices.py",
     "src/python/ai_tts/uninstall.py",
     "src/python/ai_tts/cli_config.py",
+    "src/python/ai_tts/install_ui.py",
     "Dockerfile",
     "docker-compose.test.yml",
     ".github/workflows/test.yml",

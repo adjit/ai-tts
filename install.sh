@@ -1,27 +1,31 @@
 #!/usr/bin/env bash
 # Install ai-tts (Python portable core) for macOS / Linux.
+#
 # Usage:
-#   ./install.sh                  # Grok only
-#   ./install.sh Both             # Grok + Claude
+#   ./install.sh                      # interactive (TTY) or Grok default
+#   ./install.sh Grok                 # non-interactive
+#   ./install.sh Both
 #   VOICE=eve FORCE=1 ./install.sh Grok
 #   ENABLE_DAEMON=1 ./install.sh
+#   AI_TTS_INSTALL_NONINTERACTIVE=1 ./install.sh   # force defaults (CI)
+#
+# Presentation uses Python Rich when available (auto-installed best-effort).
 set -euo pipefail
 
-TARGET="${1:-Grok}"   # Grok | Claude | Both
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AI_TTS_HOME="${AI_TTS_HOME:-$HOME/.ai-tts}"
+PYTHON="${PYTHON:-python3}"
+export PYTHONPATH="$REPO_ROOT/src/python${PYTHONPATH:+:$PYTHONPATH}"
+
+TARGET="${1:-}"
 VOICE="${VOICE:-carina}"
 LANGUAGE="${LANGUAGE:-en}"
 SPEED="${SPEED:-1.0}"
 FORCE="${FORCE:-0}"
 ENABLE_DAEMON="${ENABLE_DAEMON:-0}"
 AUTO_START_DAEMON="${AUTO_START_DAEMON:-0}"
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-AI_TTS_HOME="${AI_TTS_HOME:-$HOME/.ai-tts}"
-PYTHON="${PYTHON:-python3}"
 
 die() { echo "error: $*" >&2; exit 1; }
-step() { echo "-> $*"; }
-ok() { echo "  OK $*"; }
-warn() { echo "  ! $*"; }
 
 command -v "$PYTHON" >/dev/null 2>&1 || die "python3 not found (set PYTHON=...)"
 
@@ -29,12 +33,50 @@ PY_VER="$("$PYTHON" -c 'import sys; print(f"{sys.version_info.major}.{sys.versio
 "$PYTHON" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' \
   || die "Python 3.10+ required (found $PY_VER)"
 
-echo "ai-tts install.sh"
-echo "  target : $TARGET"
-echo "  voice  : $VOICE"
-echo "  python : $PYTHON ($PY_VER)"
-echo "  home   : $AI_TTS_HOME"
-echo ""
+# Best-effort Rich for pretty UI (offline/CI still works without it)
+if ! "$PYTHON" -c 'import rich' 2>/dev/null; then
+  "$PYTHON" -m pip install --user -q 'rich>=13.0' 2>/dev/null || true
+fi
+
+ui() {
+  "$PYTHON" -m ai_tts.install_ui "$@"
+}
+
+step() { ui step "$*"; }
+ok()   { ui ok "$*"; }
+warn() { ui warn "$*"; }
+die()  { ui error "$*"; exit 1; }
+
+# Interactive wizard when no target arg, TTY, and not forced non-interactive
+if [[ -z "$TARGET" ]]; then
+  if [[ -t 0 && -t 1 && "${AI_TTS_INSTALL_NONINTERACTIVE:-0}" != "1" ]]; then
+    # shellcheck disable=SC1090
+    eval "$(ui wizard --export-shell --default-target Grok --default-voice "$VOICE")"
+  else
+    TARGET="Grok"
+  fi
+fi
+
+# Normalize TARGET
+case "$TARGET" in
+  Grok|grok) TARGET=Grok ;;
+  Claude|claude) TARGET=Claude ;;
+  Both|both) TARGET=Both ;;
+  *) die "unknown target: $TARGET (use Grok|Claude|Both)" ;;
+esac
+
+MODE="direct"
+if [[ "$ENABLE_DAEMON" == "1" ]]; then
+  MODE="daemon"
+fi
+
+ui banner \
+  --title "ai-tts installer" \
+  --target "$TARGET" \
+  --voice "$VOICE" \
+  --python "$PYTHON ($PY_VER)" \
+  --home "$AI_TTS_HOME" \
+  --mode "$MODE"
 
 # --- shared runtime ---
 step "Installing Python package to $AI_TTS_HOME/lib"
@@ -88,10 +130,8 @@ fi
 
 # Config
 CFG="$AI_TTS_HOME/config.json"
-MODE="direct"
 DENABLED="false"
 if [[ "$ENABLE_DAEMON" == "1" ]]; then
-  MODE="daemon"
   DENABLED="true"
 fi
 if [[ ! -f "$CFG" || "$FORCE" == "1" ]]; then
@@ -117,7 +157,9 @@ else
   warn "keeping existing config.json (FORCE=1 to overwrite)"
 fi
 
+step "Copying docs"
 cp -f "$REPO_ROOT/docs/"*.md "$AI_TTS_HOME/docs/" 2>/dev/null || true
+ok "docs → $AI_TTS_HOME/docs"
 
 # Playback probe
 step "Playback probe"
@@ -194,8 +236,6 @@ Voice is OFF by default per directory. State: `~/.grok/.tts-dirs/`.
 SKILL
   ok "skill /tts"
 
-  cp -f "$REPO_ROOT/grok/rules/voice-tts.md" "$grok_home/rules/voice-tts.md"
-  # Point rules at portable runtime
   cat >"$grok_home/rules/voice-tts.md" <<'RULE'
 # Voice Output (TTS)
 
@@ -270,20 +310,9 @@ EOF
 }
 
 case "$TARGET" in
-  Grok|grok) write_grok_hooks ;;
-  Claude|claude) write_claude_hooks ;;
-  Both|both) write_grok_hooks; write_claude_hooks ;;
-  *) die "unknown target: $TARGET (use Grok|Claude|Both)" ;;
+  Grok) write_grok_hooks ;;
+  Claude) write_claude_hooks ;;
+  Both) write_grok_hooks; write_claude_hooks ;;
 esac
 
-echo ""
-echo "Next steps:"
-echo "  1. export XAI_API_KEY=...  (login shell / profile — see https://console.x.ai )"
-echo "  2. PATH (pick one):"
-echo "       source $ENV_SH"
-echo "       # or ensure ~/.local/bin is on PATH (symlink installed if possible)"
-echo "  3. Health:  $AI_TTS_BIN doctor"
-echo "             $AI_TTS_BIN speak \"Hello from Carina\""
-echo "  4. New Grok session, then /tts in a project"
-echo "  Uninstall: $AI_TTS_BIN uninstall   # or ./uninstall.sh"
-echo "Done."
+ui next-steps --launcher "$AI_TTS_BIN" --env-sh "$ENV_SH"

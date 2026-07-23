@@ -36,12 +36,15 @@ cd ai-tts
 ```bash
 cd ai-tts
 chmod +x install.sh uninstall.sh
-./install.sh Grok
+./install.sh              # interactive Rich UI (target + voice) when run in a TTY
+./install.sh Grok         # non-interactive
 # VOICE=eve FORCE=1 ENABLE_DAEMON=1 ./install.sh Both
+# AI_TTS_INSTALL_NONINTERACTIVE=1 ./install.sh
 # Writes ~/.ai-tts/env.sh and tries ~/.local/bin/ai-tts symlink
 ```
 
-Requires **Python 3.10+**. Optional: `pip install --user 'websockets>=12.0'`.
+Requires **Python 3.10+**.  
+Optional: `pip install --user 'websockets>=12.0'` (streaming), `rich>=13` (pretty install UI; `install.sh` tries to install Rich automatically).
 
 ### PATH
 
