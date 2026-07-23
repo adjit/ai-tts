@@ -2,5 +2,13 @@
   "voice": "carina",
   "language": "en",
   "speed": 1.0,
-  "comment": "Copy to %USERPROFILE%\\.ai-tts\\config.json after install, or pass -Voice to install.ps1. Voices: carina, ara, eve, leo, rex, sal, luna, iris, celeste, altair, atlas, ..."
+  "mode": "direct",
+  "daemon": {
+    "enabled": false,
+    "pipeName": "ai-tts",
+    "autoStart": false,
+    "optimizeStreamingLatency": 2,
+    "sampleRate": 24000
+  },
+  "_comment": "mode: 'direct' (default, spawn speak.ps1 per turn) or 'daemon' (warm process + streaming TTS). Set daemon.enabled true or mode to 'daemon'. Start with: powershell -File ~/.ai-tts/daemon.ps1  OR  .\\scripts\\daemon-start.ps1"
 }

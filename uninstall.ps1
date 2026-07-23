@@ -42,13 +42,26 @@ if ($Target -eq 'Claude' -or $Target -eq 'Both') {
     Write-Host "  Note: remove TTS entries from ~/.claude/settings.json manually if you merged them."
 }
 
+# Stop daemon if running
+try {
+    $stopScript = Join-Path $env:USERPROFILE '.ai-tts\scripts\daemon-stop.ps1'
+    if (Test-Path $stopScript) {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $stopScript -KeepDaemonMode 2>$null
+    }
+} catch {}
+
 if ($Target -eq 'Shared' -or $Target -eq 'Both' -or $RemoveConfig) {
     Write-Host "Removing shared ~/.ai-tts ..."
     if ($RemoveConfig) {
         Remove-IfExists (Join-Path $env:USERPROFILE '.ai-tts')
     } else {
         Remove-IfExists (Join-Path $env:USERPROFILE '.ai-tts\speak.ps1')
+        Remove-IfExists (Join-Path $env:USERPROFILE '.ai-tts\speak-core.ps1')
         Remove-IfExists (Join-Path $env:USERPROFILE '.ai-tts\common.ps1')
+        Remove-IfExists (Join-Path $env:USERPROFILE '.ai-tts\daemon.ps1')
+        Remove-IfExists (Join-Path $env:USERPROFILE '.ai-tts\scripts')
+        Remove-IfExists (Join-Path $env:USERPROFILE '.ai-tts\daemon.pid')
+        Remove-IfExists (Join-Path $env:USERPROFILE '.ai-tts\daemon.log')
         Remove-IfExists (Join-Path $env:USERPROFILE '.ai-tts\claude-settings.hooks.snippet.json')
         Write-Host "  kept config.json (pass -RemoveConfig to delete ~/.ai-tts entirely)"
     }

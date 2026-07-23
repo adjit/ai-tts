@@ -59,9 +59,12 @@ Toggle off with `/tts` again. State is **per directory** and persists across ses
 
 | Path | Purpose |
 |------|---------|
-| `~/.ai-tts/speak.ps1` | xAI TTS player |
-| `~/.ai-tts/common.ps1` | Shared hook helpers |
-| `~/.ai-tts/config.json` | Voice / language / speed |
+| `~/.ai-tts/speak.ps1` | One-shot xAI TTS player (direct mode) |
+| `~/.ai-tts/speak-core.ps1` | Streaming WebSocket + REST + playback |
+| `~/.ai-tts/common.ps1` | Shared hook helpers + mode dispatch |
+| `~/.ai-tts/daemon.ps1` | Optional warm worker |
+| `~/.ai-tts/scripts/daemon-*.ps1` | Start/stop helpers |
+| `~/.ai-tts/config.json` | Voice, mode (`direct`/`daemon`), daemon options |
 | `~/.grok/hooks/tts.json` | Registers SessionStart + Stop |
 | `~/.grok/hooks/tts-state.ps1` | Injects ON/OFF into the model |
 | `~/.grok/hooks/tts-stop.ps1` | Speaks the last `<say>` block |
@@ -122,7 +125,15 @@ Edit `~/.ai-tts/config.json`:
 {
   "voice": "carina",
   "language": "en",
-  "speed": 1.0
+  "speed": 1.0,
+  "mode": "direct",
+  "daemon": {
+    "enabled": false,
+    "pipeName": "ai-tts",
+    "autoStart": false,
+    "optimizeStreamingLatency": 2,
+    "sampleRate": 24000
+  }
 }
 ```
 
@@ -136,28 +147,65 @@ Re-install with a new default:
 
 ---
 
+## Optional low-latency daemon
+
+Default **direct** mode spawns PowerShell per turn (simple, no background process).
+
+For faster speech after each turn, enable the **optional daemon** (warm process + streaming WebSocket TTS):
+
+```powershell
+# Prefer daemon in config (does not start it yet)
+.\install.ps1 -Target Grok -EnableDaemon -Force
+
+# Start the background worker (also sets mode=daemon)
+powershell -File $env:USERPROFILE\.ai-tts\scripts\daemon-start.ps1
+
+# Stop worker and return to direct mode
+powershell -File $env:USERPROFILE\.ai-tts\scripts\daemon-stop.ps1
+```
+
+Or edit config only:
+
+| Setting | Effect |
+|---------|--------|
+| `"mode": "direct"` (default) | Spawn `speak.ps1` each turn |
+| `"mode": "daemon"` + daemon running | Named pipe → warm worker (~ms dispatch) |
+| `daemon.autoStart: true` | If pipe is down, Stop hook tries to start the daemon once |
+
+If daemon mode is on but the process is not running (and autoStart is off), hooks **fall back to direct** automatically.
+
+Full details: [docs/daemon.md](docs/daemon.md).
+
+---
+
 ## Repository layout
 
 ```text
 ai-tts/
-├── README.md                 ← you are here
-├── install.ps1               ← Windows installer
+├── README.md                 <- you are here
+├── install.ps1               <- Windows installer
 ├── uninstall.ps1
 ├── config.example.json
 ├── src/
-│   ├── speak.ps1             ← shared xAI TTS player
-│   └── common.ps1            ← shared hook helpers
-├── grok/                     ← Grok Build packaging (primary)
+│   ├── speak.ps1             <- one-shot player (direct mode)
+│   ├── speak-core.ps1        <- REST + streaming WebSocket
+│   ├── common.ps1            <- hooks: markers + daemon/direct dispatch
+│   └── daemon.ps1            <- optional warm named-pipe worker
+├── scripts/
+│   ├── daemon-start.ps1
+│   └── daemon-stop.ps1
+├── grok/                     <- Grok Build packaging (primary)
 │   ├── hooks/
 │   ├── skills/tts/
 │   └── rules/
-├── claude/                   ← Claude Code packaging
+├── claude/                   <- Claude Code packaging
 │   ├── hooks/
 │   ├── skills/tts/
 │   ├── rules/
 │   └── settings.hooks.snippet.json
 ├── docs/
 │   ├── architecture.md
+│   ├── daemon.md
 │   └── voices.md
 └── examples/
     └── manual-smoke.ps1
@@ -200,6 +248,8 @@ ai-tts/
 | Symptom | Fix |
 |---------|-----|
 | No speech | Confirm User-level `XAI_API_KEY`; test `speak.ps1` alone |
+| Slow after `<say>` appears | Expected in direct mode (turn end + spawn). Use **daemon mode** ([docs/daemon.md](docs/daemon.md)) |
+| Daemon configured but still slow | Ensure process is running (`daemon-start.ps1`); check `daemon.log` |
 | Model never emits `<say>` | Run `/tts` (must be ON); new session so SessionStart + rules load |
 | Hooks not firing | Grok: `/hooks` and confirm `tts.json` enabled; reload or restart |
 | Claude silent | Check `settings.json` Stop/SessionStart include tts hooks; transcript path present |

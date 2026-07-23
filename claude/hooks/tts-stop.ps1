@@ -58,14 +58,13 @@ if (Get-Command Get-LastSayBlock -ErrorAction SilentlyContinue) {
 }
 if (-not $say) { exit 0 }
 
-if (Get-Command Start-DetachedSpeak -ErrorAction SilentlyContinue) {
+if (Get-Command Invoke-AiTtsSpeakRequest -ErrorAction SilentlyContinue) {
+    Invoke-AiTtsSpeakRequest $say
+} elseif (Get-Command Start-DetachedSpeak -ErrorAction SilentlyContinue) {
     Start-DetachedSpeak $say
 } else {
-    $tmp = Join-Path $env:TEMP ("ai-tts-say-{0}.txt" -f [guid]::NewGuid().ToString('N'))
-    [System.IO.File]::WriteAllText($tmp, $say, (New-Object System.Text.UTF8Encoding($false)))
     $speak = Join-Path $env:USERPROFILE '.claude\speak.ps1'
-    $cmd = "`$t=[System.IO.File]::ReadAllText('$tmp',[System.Text.Encoding]::UTF8); Remove-Item '$tmp' -ErrorAction SilentlyContinue; & '$speak' -Text `$t"
     Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden `
-        -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $cmd | Out-Null
+        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $speak, '-Text', $say) | Out-Null
 }
 exit 0

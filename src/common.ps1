@@ -19,10 +19,43 @@ function Get-AiTtsVoice {
     return 'carina'
 }
 
+function Get-AiTtsLanguage {
+    $cfg = Get-AiTtsConfig
+    if ($cfg -and $cfg.language) { return [string]$cfg.language }
+    return 'en'
+}
+
+function Get-AiTtsSpeed {
+    $cfg = Get-AiTtsConfig
+    if ($cfg -and $cfg.speed) { return [double]$cfg.speed }
+    return 1.0
+}
+
+function Test-AiTtsDaemonEnabled {
+    $cfg = Get-AiTtsConfig
+    if (-not $cfg) { return $false }
+    if ($cfg.mode -and ([string]$cfg.mode).ToLowerInvariant() -eq 'daemon') { return $true }
+    if ($cfg.daemon -and $cfg.daemon.enabled) { return [bool]$cfg.daemon.enabled }
+    return $false
+}
+
+function Get-AiTtsPipeName {
+    $cfg = Get-AiTtsConfig
+    if ($cfg -and $cfg.daemon -and $cfg.daemon.pipeName) { return [string]$cfg.daemon.pipeName }
+    return 'ai-tts'
+}
+
+function Test-AiTtsDaemonAutoStart {
+    $cfg = Get-AiTtsConfig
+    if ($cfg -and $cfg.daemon -and $null -ne $cfg.daemon.autoStart) {
+        return [bool]$cfg.daemon.autoStart
+    }
+    return $false
+}
+
 function Get-AiTtsSpeakPath {
     $homeSpeak = Join-Path (Get-AiTtsHome) 'speak.ps1'
     if (Test-Path -LiteralPath $homeSpeak) { return $homeSpeak }
-    # Fallbacks after install into harness dirs
     foreach ($p in @(
         (Join-Path $env:USERPROFILE '.grok\speak.ps1'),
         (Join-Path $env:USERPROFILE '.claude\speak.ps1')
@@ -30,6 +63,12 @@ function Get-AiTtsSpeakPath {
         if (Test-Path -LiteralPath $p) { return $p }
     }
     return $homeSpeak
+}
+
+function Get-AiTtsDaemonPath {
+    $p = Join-Path (Get-AiTtsHome) 'daemon.ps1'
+    if (Test-Path -LiteralPath $p) { return $p }
+    return $p
 }
 
 function Get-NormalizedCwd([string]$cwd) {
@@ -100,7 +139,100 @@ function Start-DetachedSpeak([string]$say) {
     [System.IO.File]::WriteAllText($tmp, $say, (New-Object System.Text.UTF8Encoding($false)))
     $speak = Get-AiTtsSpeakPath
     $voice = Get-AiTtsVoice
-    $cmd = "`$t=[System.IO.File]::ReadAllText('$tmp',[System.Text.Encoding]::UTF8); Remove-Item '$tmp' -ErrorAction SilentlyContinue; & '$speak' -Text `$t -Voice '$voice'"
+    # -File is faster/cleaner than -Command string rebuild
+    $arg = @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass',
+        '-File', $speak,
+        '-Text', $say,
+        '-Voice', $voice
+    )
+    # Prefer -File with text arg; if path issues, fall back to temp file loader
+    try {
+        Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -ArgumentList $arg | Out-Null
+    } catch {
+        $cmd = "`$t=[System.IO.File]::ReadAllText('$tmp',[System.Text.Encoding]::UTF8); Remove-Item '$tmp' -ErrorAction SilentlyContinue; & '$speak' -Text `$t -Voice '$voice'"
+        Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden `
+            -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $cmd | Out-Null
+        return
+    }
+    # cleanup temp if unused
+    Remove-Item $tmp -ErrorAction SilentlyContinue
+}
+
+function Send-AiTtsDaemonSpeak([string]$say) {
+    $pipeName = Get-AiTtsPipeName
+    $payload = @{
+        text     = $say
+        voice    = Get-AiTtsVoice
+        language = Get-AiTtsLanguage
+        speed    = Get-AiTtsSpeed
+    } | ConvertTo-Json -Compress
+
+    $client = $null
+    try {
+        $client = New-Object System.IO.Pipes.NamedPipeClientStream(
+            '.', $pipeName, [System.IO.Pipes.PipeDirection]::InOut,
+            [System.IO.Pipes.PipeOptions]::None
+        )
+        $client.Connect(800)
+        $writer = New-Object System.IO.StreamWriter($client, [Text.Encoding]::UTF8, 1024, $true)
+        $reader = New-Object System.IO.StreamReader($client, [Text.Encoding]::UTF8, $false, 1024, $true)
+        $writer.AutoFlush = $true
+        $writer.WriteLine($payload)
+        $respLine = $reader.ReadLine()
+        if (-not $respLine) { throw 'daemon empty response' }
+        $resp = $respLine | ConvertFrom-Json
+        if (-not $resp.ok) { throw "daemon error: $($resp.error)" }
+        return $true
+    }
+    finally {
+        if ($client) { try { $client.Dispose() } catch {} }
+    }
+}
+
+function Start-AiTtsDaemonProcess {
+    $daemon = Get-AiTtsDaemonPath
+    if (-not (Test-Path -LiteralPath $daemon)) { return $false }
     Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden `
-        -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $cmd | Out-Null
+        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $daemon) | Out-Null
+    # Wait briefly for the pipe to appear
+    $pipeName = Get-AiTtsPipeName
+    for ($i = 0; $i -lt 20; $i++) {
+        Start-Sleep -Milliseconds 150
+        try {
+            $c = New-Object System.IO.Pipes.NamedPipeClientStream('.', $pipeName, [System.IO.Pipes.PipeDirection]::InOut)
+            $c.Connect(100)
+            $w = New-Object System.IO.StreamWriter($c, [Text.Encoding]::UTF8, 1024, $true)
+            $r = New-Object System.IO.StreamReader($c, [Text.Encoding]::UTF8, $false, 1024, $true)
+            $w.AutoFlush = $true
+            $w.WriteLine('{"cmd":"ping"}')
+            $line = $r.ReadLine()
+            $c.Dispose()
+            if ($line -and $line -match 'pong|ok') { return $true }
+        } catch {}
+    }
+    return $false
+}
+
+function Invoke-AiTtsSpeakRequest([string]$say) {
+    if (-not $say) { return }
+
+    if (Test-AiTtsDaemonEnabled) {
+        try {
+            [void](Send-AiTtsDaemonSpeak $say)
+            return
+        } catch {
+            if (Test-AiTtsDaemonAutoStart) {
+                try {
+                    if (Start-AiTtsDaemonProcess) {
+                        [void](Send-AiTtsDaemonSpeak $say)
+                        return
+                    }
+                } catch {}
+            }
+            # Fall through to direct path
+        }
+    }
+
+    Start-DetachedSpeak $say
 }

@@ -19,7 +19,12 @@ param(
 
     [switch]$MergeClaudeSettings,
 
-    [switch]$Force
+    [switch]$Force,
+
+    # Opt into low-latency daemon mode in generated config (still start daemon separately).
+    [switch]$EnableDaemon,
+
+    [switch]$AutoStartDaemon
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,19 +54,34 @@ function Install-Shared {
     Ensure-Dir (Join-Path $AiTtsHome 'bin')
 
     Copy-FileForced (Join-Path $RepoRoot 'src\speak.ps1') (Join-Path $AiTtsHome 'speak.ps1')
+    Copy-FileForced (Join-Path $RepoRoot 'src\speak-core.ps1') (Join-Path $AiTtsHome 'speak-core.ps1')
     Copy-FileForced (Join-Path $RepoRoot 'src\common.ps1') (Join-Path $AiTtsHome 'common.ps1')
+    Copy-FileForced (Join-Path $RepoRoot 'src\daemon.ps1') (Join-Path $AiTtsHome 'daemon.ps1')
+    Ensure-Dir (Join-Path $AiTtsHome 'scripts')
+    Copy-FileForced (Join-Path $RepoRoot 'scripts\daemon-start.ps1') (Join-Path $AiTtsHome 'scripts\daemon-start.ps1')
+    Copy-FileForced (Join-Path $RepoRoot 'scripts\daemon-stop.ps1') (Join-Path $AiTtsHome 'scripts\daemon-stop.ps1')
 
     $cfgPath = Join-Path $AiTtsHome 'config.json'
     if ((-not (Test-Path $cfgPath)) -or $Force) {
-        $cfg = @{
+        $mode = if ($EnableDaemon) { 'daemon' } else { 'direct' }
+        $cfg = [ordered]@{
             voice    = $Voice
             language = $Language
             speed    = $Speed
-        } | ConvertTo-Json
-        Set-Content -LiteralPath $cfgPath -Value $cfg -Encoding UTF8
-        Write-Ok "Wrote config.json (voice=$Voice)"
+            mode     = $mode
+            daemon   = [ordered]@{
+                enabled                  = [bool]$EnableDaemon
+                pipeName                 = 'ai-tts'
+                autoStart                = [bool]$AutoStartDaemon
+                optimizeStreamingLatency = 2
+                sampleRate               = 24000
+            }
+        }
+        ($cfg | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $cfgPath -Encoding UTF8
+        Write-Ok "Wrote config.json (voice=$Voice mode=$mode)"
     } else {
         Write-Warn2 "config.json already exists (use -Force to overwrite). Keeping existing."
+        # Always refresh binaries even when config is kept
     }
 }
 
@@ -98,6 +118,8 @@ function Install-Grok {
     Write-Host "  3. Run /tts in a project directory to enable voice."
     Write-Host "  4. Optional smoke test:"
     Write-Host "     powershell -File `"$AiTtsHome\speak.ps1`" -Text `"Hello from Carina`" -Voice $Voice"
+    Write-Host "  5. Optional low-latency daemon (see README):"
+    Write-Host "     powershell -File `"$AiTtsHome\scripts\daemon-start.ps1`""
 }
 
 function Merge-ClaudeHooks {

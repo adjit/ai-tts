@@ -55,9 +55,32 @@ Let coding agents **speak a short spoken summary** of each completed turn using 
 
 | File | Role |
 |------|------|
-| `speak.ps1` | xAI TTS + Windows fallback |
-| `common.ps1` | Marker keys, say extraction, detached launch |
-| `config.json` | `voice`, `language`, `speed` |
+| `speak.ps1` | One-shot speaker (direct mode) |
+| `speak-core.ps1` | REST + streaming WebSocket + playback |
+| `common.ps1` | Markers, say extraction, daemon/direct dispatch |
+| `daemon.ps1` | Optional warm named-pipe worker |
+| `scripts/daemon-start.ps1` / `daemon-stop.ps1` | Lifecycle helpers |
+| `config.json` | `voice`, `mode`, `daemon.*` |
+
+## Modes
+
+```text
+                    config.mode
+                         │
+            ┌────────────┴────────────┐
+            ▼                         ▼
+         direct                     daemon
+            │                         │
+   Start-Process speak.ps1     Named pipe -> warm daemon
+            │                         │
+            └──────────┬──────────────┘
+                       ▼
+              speak-core (stream WS, REST fallback)
+                       ▼
+                    play audio
+```
+
+Daemon is **optional**. If enabled but not running (and `autoStart` is false), hooks fall back to direct mode. See [daemon.md](daemon.md).
 
 ## Security notes
 
