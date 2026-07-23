@@ -94,7 +94,7 @@ function Install-Grok {
     Write-Host ""
     Write-Host "Grok next steps:" -ForegroundColor White
     Write-Host "  1. Set XAI_API_KEY (User or process env)."
-    Write-Host "  2. Start a new Grok session (or /hooks → reload)."
+    Write-Host "  2. Start a new Grok session (or /hooks and reload)."
     Write-Host "  3. Run /tts in a project directory to enable voice."
     Write-Host "  4. Optional smoke test:"
     Write-Host "     powershell -File `"$AiTtsHome\speak.ps1`" -Text `"Hello from Carina`" -Voice $Voice"
