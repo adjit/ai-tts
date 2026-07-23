@@ -2,7 +2,9 @@
 .SYNOPSIS
   Start the optional ai-tts daemon in the background (Windows).
 
-  Prefers the portable Python TCP daemon; falls back to legacy named-pipe PS daemon.
+  Default: portable Python TCP daemon (recommended).
+  -LegacyNamedPipe: [DEPRECATED] Windows named-pipe PowerShell daemon.
+  See docs/DEPRECATED_POWERSHELL.md
 #>
 param(
     [switch]$Foreground,
@@ -12,6 +14,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $homeDir = if ($env:AI_TTS_HOME) { $env:AI_TTS_HOME } else { Join-Path $env:USERPROFILE '.ai-tts' }
 $pyCmd = Join-Path $homeDir 'bin\ai-tts.cmd'
+
+if ($LegacyNamedPipe) {
+    Write-Warning '[ai-tts] -LegacyNamedPipe is DEPRECATED. Prefer Python: ai-tts daemon --enable-config'
+}
 
 # Prefer Python TCP daemon
 if (-not $LegacyNamedPipe -and (Test-Path -LiteralPath $pyCmd)) {

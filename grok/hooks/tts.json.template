@@ -1,5 +1,5 @@
 {
-  "description": "ai-tts: xAI voice output - SessionStart reports per-directory state; Stop speaks <say> lines",
+  "description": "[DEPRECATED PowerShell hooks] Prefer Python: ai-tts hook-state / hook-stop. See docs/DEPRECATED_POWERSHELL.md",
   "hooks": {
     "SessionStart": [
       {

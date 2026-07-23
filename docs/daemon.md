@@ -1,20 +1,24 @@
 # Optional low-latency daemon
 
-By default **ai-tts** uses **direct mode**: each Stop hook spawns a new PowerShell process, calls xAI TTS, plays audio, exits. That is simple and requires no background process.
+By default **ai-tts** uses **direct mode**: each Stop hook detaches a short-lived
+`ai-tts speak` process, synthesizes via xAI, plays audio, exits.
 
-For lower latency after each turn, enable the **optional daemon**:
+For lower latency after each turn, enable the **optional TCP daemon** (Python):
 
-1. One warm PowerShell process (no ~1s cold start per turn)
-2. Streaming WebSocket TTS (`wss://api.x.ai/v1/tts`) with `optimize_streaming_latency`
-3. Reused WebSocket across utterances when possible
+1. One warm process (no cold start per turn)
+2. Streaming WebSocket TTS when `websockets` is installed
+3. Protocol over **localhost TCP** (portable across Windows / macOS / Linux)
 
-Direct mode remains the default. Daemon is opt-in via config (and you must start it).
+Direct mode remains the default. Daemon is opt-in.
+
+> **Deprecated:** The Windows **named-pipe** PowerShell daemon (`src/daemon.ps1`)
+> is obsolete. Use Python TCP only. See [DEPRECATED_POWERSHELL.md](DEPRECATED_POWERSHELL.md).
 
 ---
 
 ## Configure
 
-`%USERPROFILE%\.ai-tts\config.json`:
+`~/.ai-tts/config.json`:
 
 ```json
 {
@@ -24,7 +28,8 @@ Direct mode remains the default. Daemon is opt-in via config (and you must start
   "mode": "daemon",
   "daemon": {
     "enabled": true,
-    "pipeName": "ai-tts",
+    "host": "127.0.0.1",
+    "port": 18765,
     "autoStart": false,
     "optimizeStreamingLatency": 2,
     "sampleRate": 24000
@@ -34,40 +39,47 @@ Direct mode remains the default. Daemon is opt-in via config (and you must start
 
 | Field | Default | Meaning |
 |-------|---------|---------|
-| `mode` | `direct` | `direct` = spawn `speak.ps1`; `daemon` = named pipe |
+| `mode` | `direct` | `direct` = one-shot `ai-tts speak`; `daemon` = TCP client |
 | `daemon.enabled` | `false` | Same as `mode: daemon` when true |
-| `daemon.pipeName` | `ai-tts` | Windows named pipe `\\.\pipe\<name>` |
-| `daemon.autoStart` | `false` | If true and pipe missing, Stop hook tries to start the daemon once |
-| `daemon.optimizeStreamingLatency` | `2` | xAI streaming latency tip (`0` quality … `2` fastest first audio) |
-| `daemon.sampleRate` | `24000` | PCM sample rate for streaming |
+| `daemon.host` / `port` | `127.0.0.1` / `18765` | TCP listen address |
+| `daemon.autoStart` | `false` | If true and server missing, try start once |
+| `daemon.optimizeStreamingLatency` | `2` | xAI stream tip (`0` quality … `2` fastest) |
+| `daemon.sampleRate` | `24000` | PCM sample rate |
+| `daemon.pipeName` | `ai-tts` | **Deprecated** Windows named pipe only |
 
-Install with daemon preference pre-set (still start the process yourself unless `autoStart`):
+Install with daemon preference (still start the process yourself unless `autoStart`):
 
 ```powershell
 .\install.ps1 -Target Grok -EnableDaemon
-.\install.ps1 -Target Grok -EnableDaemon -AutoStartDaemon
+```
+
+```bash
+ENABLE_DAEMON=1 ./install.sh Grok
 ```
 
 ---
 
 ## Start / stop
 
-```powershell
-# Background
-powershell -File $env:USERPROFILE\.ai-tts\scripts\daemon-start.ps1
+```bash
+# Any OS
+ai-tts daemon --enable-config
+ai-tts daemon-ping
+ai-tts daemon-stop
 
-# Foreground (debug logs on console)
-powershell -File $env:USERPROFILE\.ai-tts\scripts\daemon-start.ps1 -Foreground
-
-# Stop and set mode back to direct
-powershell -File $env:USERPROFILE\.ai-tts\scripts\daemon-stop.ps1
-
-# Stop but keep mode=daemon in config
-powershell -File $env:USERPROFILE\.ai-tts\scripts\daemon-stop.ps1 -KeepDaemonMode
+# Windows launcher
+%USERPROFILE%\.ai-tts\bin\ai-tts.cmd daemon --enable-config
 ```
 
-Logs: `%USERPROFILE%\.ai-tts\daemon.log`  
-PID file: `%USERPROFILE%\.ai-tts\daemon.pid`
+Windows helper scripts still exist but prefer Python:
+
+```powershell
+.\scripts\daemon-start.ps1          # starts Python TCP daemon
+.\scripts\daemon-start.ps1 -LegacyNamedPipe   # DEPRECATED
+```
+
+Logs: `~/.ai-tts/daemon.log`  
+PID file: `~/.ai-tts/daemon.pid`
 
 ---
 
@@ -75,21 +87,21 @@ PID file: `%USERPROFILE%\.ai-tts\daemon.pid`
 
 When `mode` is `daemon` / `enabled` is true:
 
-1. Stop hook sends JSON to the named pipe (fast path).
-2. If the pipe is down and `autoStart` is true → try start daemon, retry once.
-3. Otherwise → **fall back to direct** `speak.ps1` (same as default mode).
+1. Client sends JSON to TCP `host:port`.
+2. If down and `autoStart` is true → try start daemon, retry once.
+3. Otherwise → **fall back to direct** `ai-tts speak`.
 
 You never lose speech if the daemon is misconfigured; you only lose the latency win.
 
 ---
 
-## Protocol (for integrators)
+## Protocol
 
-Named pipe, one line request, one line response (UTF-8 JSON):
+One line request, one line response (UTF-8 JSON) over TCP:
 
 ```text
 -> {"text":"Hello","voice":"carina","language":"en","speed":1.0}
-<- {"ok":true,"ms":850,"voice":"carina"}
+<- {"ok":true,"ms":850,"voice":"carina","transport":"stream"}
 
 -> {"cmd":"ping"}
 <- {"ok":true,"pong":true,"pid":12345}
@@ -102,11 +114,9 @@ Named pipe, one line request, one line response (UTF-8 JSON):
 
 ## When to use which mode
 
-| | Direct | Daemon |
-|--|--------|--------|
+| | Direct | Daemon (Python TCP) |
+|--|--------|---------------------|
 | Setup | Install only | Install + start daemon |
 | Background process | No | Yes |
-| Latency after Stop | Higher (spawn + REST/stream) | Lower (warm process + stream) |
+| Latency after Stop | Higher | Lower |
 | Best for | Occasional voice | Frequent `/tts` use |
-
-Direct mode also uses **streaming WebSocket when possible**, with REST fallback — so one-shot `speak.ps1` is improved even without the daemon. The daemon’s main win is avoiding process spawn and keeping the socket warm.

@@ -12,5 +12,5 @@
     "optimizeStreamingLatency": 2,
     "sampleRate": 24000
   },
-  "_comment": "mode: direct|daemon. Windows today: named pipe (pipeName) via PowerShell daemon. Portable target: TCP host:port (see docs/platforms.md). Start Win daemon: scripts/daemon-start.ps1"
+  "_comment": "mode: direct|daemon. Use Python TCP daemon (host/port). pipeName is DEPRECATED (Windows named-pipe PS only). Start: ai-tts daemon --enable-config"
 }

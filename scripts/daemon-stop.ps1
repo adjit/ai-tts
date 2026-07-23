@@ -1,6 +1,9 @@
 <#
 .SYNOPSIS
   Stop the ai-tts daemon and switch config back to direct mode (optional).
+
+  Prefers Python: ai-tts daemon-stop
+  Named-pipe path is [DEPRECATED]. See docs/DEPRECATED_POWERSHELL.md
 #>
 param(
     [switch]$KeepDaemonMode
@@ -8,7 +11,21 @@ param(
 
 $ErrorActionPreference = 'SilentlyContinue'
 $homeDir = if ($env:AI_TTS_HOME) { $env:AI_TTS_HOME } else { Join-Path $env:USERPROFILE '.ai-tts' }
+
+# Prefer Python TCP daemon-stop
+$pyCmd = Join-Path $homeDir 'bin\ai-tts.cmd'
+if (Test-Path -LiteralPath $pyCmd) {
+    try {
+        & $pyCmd daemon-stop 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host 'Stopped via Python ai-tts daemon-stop.'
+            if (-not $KeepDaemonMode) { exit 0 }
+        }
+    } catch {}
+}
+
 $pipeName = 'ai-tts'
+Write-Warning '[ai-tts] Falling back to deprecated named-pipe shutdown if needed.'
 $cfgPath = Join-Path $homeDir 'config.json'
 if (Test-Path $cfgPath) {
     try {

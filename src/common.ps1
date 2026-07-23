@@ -1,4 +1,5 @@
-# Shared helpers for ai-tts hooks (dot-sourced by harness-specific scripts).
+# [DEPRECATED] Shared helpers for legacy PowerShell hooks (Windows-only).
+# Prefer: python -m ai_tts / ai-tts.cmd  (docs/DEPRECATED_POWERSHELL.md)
 
 function Get-AiTtsHome {
     if ($env:AI_TTS_HOME) { return $env:AI_TTS_HOME }

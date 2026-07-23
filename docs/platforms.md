@@ -1,7 +1,7 @@
 # Multi-OS support
 
 **Status:** Python portable core is implemented (Phase 1 + Phase 2).  
-Windows PowerShell remains as a fallback runtime.
+Windows PowerShell runtime is **DEPRECATED** (fallback only) — [DEPRECATED_POWERSHELL.md](DEPRECATED_POWERSHELL.md).
 
 ---
 
@@ -25,8 +25,8 @@ Windows PowerShell remains as a fallback runtime.
 ```powershell
 cd ai-tts
 .\install.ps1 -Target Grok -Voice carina -Force
-# Python hooks are preferred when python is on PATH
-# Legacy: .\install.ps1 -LegacyPowerShellHooks
+# Python hooks by default
+# DEPRECATED: .\install.ps1 -LegacyPowerShellHooks
 ```
 
 ### macOS / Linux

@@ -38,3 +38,5 @@ python -m ai_tts hook-stop --harness grok   # reads Stop JSON on stdin
 - **Optional:** `pip install websockets` for streaming (else REST)
 
 See [docs/platforms.md](../../docs/platforms.md).
+
+PowerShell runtime is **deprecated** — [docs/DEPRECATED_POWERSHELL.md](../../docs/DEPRECATED_POWERSHELL.md).

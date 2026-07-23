@@ -1,4 +1,6 @@
-# SessionStart: inject whether TTS is ON/OFF for this directory (Grok Build).
+# [DEPRECATED] SessionStart for Grok Build (PowerShell).
+# Prefer: ai-tts hook-state --harness grok
+# See docs/DEPRECATED_POWERSHELL.md
 # Marker: ~/.grok/.tts-dirs/<md5(cwd)>
 
 $ErrorActionPreference = 'SilentlyContinue'

@@ -1,5 +1,6 @@
-# Shared speak implementation (REST + optional streaming WebSocket).
+# [DEPRECATED] Shared speak implementation (REST + optional streaming WebSocket).
 # Dot-sourced by speak.ps1 and daemon.ps1 — not meant to be run alone.
+# Prefer: src/python/ai_tts/  (docs/DEPRECATED_POWERSHELL.md)
 
 function Get-AiTtsApiKey {
     $key = $env:XAI_API_KEY

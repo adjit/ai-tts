@@ -20,17 +20,19 @@ Let coding agents **speak a short spoken summary** of each completed turn using 
 └──────┬──────┘
        │ Stop (turn complete)
        ▼
-┌─────────────┐  extract last <say>   ┌──────────────┐
-│ tts-stop.ps1│ ───────────────────►  │ speak.ps1    │
-│ (detached)  │                       │ xAI /v1/tts  │
-└─────────────┘                       └──────────────┘
+┌─────────────┐  extract last <say>   ┌──────────────────┐
+│ ai-tts      │ ───────────────────►  │ Python speak /   │
+│ hook-stop   │  (detached)           │ optional daemon  │
+└─────────────┘                       └──────────────────┘
 ```
+
+> PowerShell `tts-stop.ps1` / `speak.ps1` are **deprecated**. See [DEPRECATED_POWERSHELL.md](DEPRECATED_POWERSHELL.md).
 
 ## Why hooks, not tools?
 
 | Approach | Problem |
 |----------|---------|
-| Agent calls `speak.ps1` mid-turn | Blocks the turn, pollutes tool traces, wastes tokens |
+| Agent calls speak mid-turn | Blocks the turn, pollutes tool traces, wastes tokens |
 | Agent streams full reply to TTS | Too long, noisy, expensive |
 | **Stop hook + short `<say>`** | Async, cheap, model already finished |
 
@@ -53,14 +55,12 @@ Let coding agents **speak a short spoken summary** of each completed turn using 
 
 ## Shared runtime (`~/.ai-tts`)
 
-| File | Role |
+| Path | Role |
 |------|------|
-| `speak.ps1` | One-shot speaker (direct mode) |
-| `speak-core.ps1` | REST + streaming WebSocket + playback |
-| `common.ps1` | Markers, say extraction, daemon/direct dispatch |
-| `daemon.ps1` | Optional warm named-pipe worker |
-| `scripts/daemon-start.ps1` / `daemon-stop.ps1` | Lifecycle helpers |
+| `bin/ai-tts` / `ai-tts.cmd` | CLI launcher (**supported**) |
+| `lib/ai_tts/` | Python package (**supported**) |
 | `config.json` | `voice`, `mode`, `daemon.*` |
+| `speak.ps1`, `daemon.ps1`, … | **Deprecated** Windows PowerShell fallback |
 
 ## Modes
 
@@ -71,23 +71,23 @@ Let coding agents **speak a short spoken summary** of each completed turn using 
             ▼                         ▼
          direct                     daemon
             │                         │
-   Start-Process speak.ps1     Named pipe -> warm daemon
+   ai-tts speak (one-shot)     TCP 127.0.0.1:18765
             │                         │
             └──────────┬──────────────┘
                        ▼
-              speak-core (stream WS, REST fallback)
+         stream WS (optional) else REST
                        ▼
-                    play audio
+                    play WAV
 ```
 
-Daemon is **optional**. If enabled but not running (and `autoStart` is false), hooks fall back to direct mode. See [daemon.md](daemon.md).
+Daemon is **optional**. If enabled but not running (and `autoStart` is false), speak falls back to direct. See [daemon.md](daemon.md).
 
 ## Multi-OS
 
-Windows PowerShell is production today. Portable expansion (Python core, TCP daemon, macOS/Linux players) is specified in [platforms.md](platforms.md).
+Python is the supported path on Windows, macOS, and Linux. PowerShell is deprecated. See [platforms.md](platforms.md) and [DEPRECATED_POWERSHELL.md](DEPRECATED_POWERSHELL.md).
 
 ## Security notes
 
 - Hooks run with your user privileges. Only install from a trusted clone.
-- `XAI_API_KEY` must be available to detached PowerShell processes (User-level env is reliable on Windows).
+- `XAI_API_KEY` must be available to detached processes (User/login env).
 - Install never commits secrets; `config.json` holds only voice preferences.

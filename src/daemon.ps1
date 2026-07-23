@@ -1,20 +1,16 @@
 <#
 .SYNOPSIS
-  Optional warm TTS daemon for ai-tts (named pipe + streaming WebSocket).
+  [DEPRECATED] Optional warm TTS daemon (Windows named pipe).
 
 .DESCRIPTION
-  Keeps a PowerShell process alive so Stop hooks avoid cold-start cost.
-  Reuses a WebSocket to xAI when possible for lower per-turn latency.
+  DEPRECATED — use the portable Python TCP daemon instead:
 
-  Enable in ~/.ai-tts/config.json:
-    "mode": "daemon"
-    or "daemon": { "enabled": true }
+    ai-tts daemon --enable-config
 
-  Start:
-    powershell -NoProfile -ExecutionPolicy Bypass -File $env:USERPROFILE\.ai-tts\daemon.ps1
+  This named-pipe worker is Windows-only. See docs/DEPRECATED_POWERSHELL.md.
 
-  Or:
-    .\scripts\daemon-start.ps1
+  Legacy start:
+    .\scripts\daemon-start.ps1 -LegacyNamedPipe
 
 .NOTES
   Protocol (named pipe, one JSON line request / one JSON line response):
@@ -27,6 +23,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Write-Warning '[ai-tts] daemon.ps1 (named pipe) is DEPRECATED. Prefer: ai-tts daemon --enable-config'
 $AiTtsHome = if ($env:AI_TTS_HOME) { $env:AI_TTS_HOME } else { Join-Path $env:USERPROFILE '.ai-tts' }
 
 $core = Join-Path $AiTtsHome 'speak-core.ps1'

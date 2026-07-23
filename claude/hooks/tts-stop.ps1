@@ -1,4 +1,6 @@
-# Stop: when TTS is on for this directory, speak the last <say>...</say> (Claude Code).
+# [DEPRECATED] Stop hook for Claude Code (PowerShell).
+# Prefer: ai-tts hook-stop --harness claude
+# See docs/DEPRECATED_POWERSHELL.md
 # Reads transcript_path from the Stop hook payload.
 
 $ErrorActionPreference = 'SilentlyContinue'

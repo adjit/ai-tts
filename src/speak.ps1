@@ -1,10 +1,15 @@
 <#
 .SYNOPSIS
-  Speak text via xAI TTS (Grok voices), with Windows System.Speech fallback.
+  [DEPRECATED] Speak text via xAI TTS (Windows PowerShell).
 
 .DESCRIPTION
-  One-shot speaker used by the direct (non-daemon) path. Prefer the optional
-  daemon for lower latency between turns.
+  DEPRECATED — use the portable Python CLI instead:
+
+    ai-tts speak "text"
+    # or:  python -m ai_tts speak "text"
+
+  This script is a Windows-only fallback. See docs/DEPRECATED_POWERSHELL.md.
+  One-shot speaker used by the legacy direct (non-daemon) path.
 #>
 param(
     [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
@@ -21,6 +26,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Write-Warning '[ai-tts] speak.ps1 is DEPRECATED. Prefer: ai-tts speak "..."  (see docs/DEPRECATED_POWERSHELL.md)'
 
 $core = Join-Path $PSScriptRoot 'speak-core.ps1'
 if (-not (Test-Path -LiteralPath $core)) {

@@ -1,6 +1,7 @@
-# SessionStart: report whether TTS is ON/OFF for this directory (Claude Code).
+# [DEPRECATED] SessionStart for Claude Code (PowerShell).
+# Prefer: ai-tts hook-state --harness claude
+# See docs/DEPRECATED_POWERSHELL.md
 # Marker: ~/.claude/.tts-dirs/<md5(cwd)>
-# Claude Code injects plain stdout as session context.
 
 $ErrorActionPreference = 'SilentlyContinue'
 

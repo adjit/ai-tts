@@ -4,7 +4,9 @@
 
 When voice is on for a project directory, the agent ends each reply with a short `<say>...</say>` line. A **Stop hook** speaks it asynchronously (default voice: **Carina**) so the model never blocks on audio.
 
-Works on **Windows, macOS, and Linux** via a portable **Python 3.10+** runtime. Windows also keeps PowerShell helpers as a fallback.
+Works on **Windows, macOS, and Linux** via a portable **Python 3.10+** runtime.
+
+> **PowerShell scripts are deprecated.** They ship only as a Windows fallback. Prefer `ai-tts` / `python -m ai_tts`. See [docs/DEPRECATED_POWERSHELL.md](docs/DEPRECATED_POWERSHELL.md).
 
 ```text
 You:  fix the flaky test
@@ -51,7 +53,7 @@ cd ai-tts
 & "$env:USERPROFILE\.ai-tts\bin\ai-tts.cmd" speak "Hello from Carina"
 ```
 
-Use `-LegacyPowerShellHooks` only if you want the old PowerShell hook scripts instead of Python.
+`-LegacyPowerShellHooks` is **deprecated** (old Windows PowerShell hooks). Do not use for new setups.
 
 ### macOS / Linux
 
@@ -118,7 +120,7 @@ python -m ai_tts probe
 | `lib/ai_tts/` | Python package (speak, daemon, hooks) |
 | `config.json` | Voice, mode (`direct`/`daemon`), daemon host/port |
 | `docs/` | Copied reference docs |
-| `speak.ps1`, `common.ps1`, … | Windows PowerShell **fallback** (kept by `install.ps1`) |
+| `speak.ps1`, `common.ps1`, … | **Deprecated** PowerShell fallback (Windows only) |
 
 ### Grok (`~/.grok`)
 
@@ -263,27 +265,28 @@ Details: [docs/daemon.md](docs/daemon.md) · [docs/platforms.md](docs/platforms.
 ```text
 ai-tts/
 ├── README.md
-├── install.ps1                 # Windows installer (Python hooks preferred)
+├── install.ps1                 # Windows installer (Python hooks)
 ├── install.sh                  # macOS/Linux installer
 ├── uninstall.ps1
 ├── pyproject.toml
 ├── requirements.txt            # optional: websockets
 ├── config.example.json
 ├── src/
-│   ├── python/ai_tts/          # portable core (primary)
-│   ├── speak.ps1               # Windows PS fallback
-│   ├── speak-core.ps1
-│   ├── common.ps1
-│   └── daemon.ps1              # legacy named-pipe daemon (Windows)
+│   ├── python/ai_tts/          # portable core (SUPPORTED)
+│   ├── speak.ps1               # DEPRECATED Windows PS
+│   ├── speak-core.ps1          # DEPRECATED
+│   ├── common.ps1              # DEPRECATED
+│   └── daemon.ps1              # DEPRECATED named-pipe daemon
 ├── scripts/
-│   ├── daemon-start.ps1
+│   ├── daemon-start.ps1        # prefers Python; -LegacyNamedPipe DEPRECATED
 │   └── daemon-stop.ps1
-├── grok/                       # packaging templates (skills, rules, PS hooks)
+├── grok/                       # packaging (skills/rules; PS hooks DEPRECATED)
 ├── claude/
 ├── docs/
 │   ├── architecture.md
 │   ├── daemon.md
-│   ├── platforms.md            # multi-OS design + status
+│   ├── platforms.md
+│   ├── DEPRECATED_POWERSHELL.md
 │   └── voices.md
 └── examples/
     └── manual-smoke.ps1
@@ -338,6 +341,12 @@ rm -rf ~/.ai-tts ~/.grok/hooks/tts.json ~/.grok/skills/tts ~/.grok/rules/voice-t
 | Claude silent | Merge hook snippet into `settings.json`; confirm Stop runs |
 | Wrong voice | Edit `~/.ai-tts/config.json` → `voice` |
 | Dictation vs TTS | `/voice` is **input**; this project is **output** |
+
+---
+
+## Deprecated PowerShell path
+
+Do not extend `src/*.ps1` or PowerShell hooks. Use Python. Details and removal plan: **[docs/DEPRECATED_POWERSHELL.md](docs/DEPRECATED_POWERSHELL.md)**.
 
 ---
 

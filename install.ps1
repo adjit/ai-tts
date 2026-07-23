@@ -3,14 +3,14 @@
   Install ai-tts into Grok Build and/or Claude Code (Windows).
 
 .DESCRIPTION
-  Installs the portable Python runtime (primary) plus legacy PowerShell
-  helpers. Hooks prefer Python when available.
+  Installs the portable Python runtime (primary). PowerShell helpers are
+  DEPRECATED and only installed as a Windows fallback / opt-in legacy hooks.
 
 .EXAMPLE
   .\install.ps1
   .\install.ps1 -Target Both -Voice carina -MergeClaudeSettings
   .\install.ps1 -EnableDaemon -Force
-  .\install.ps1 -LegacyPowerShellHooks   # use PS hooks instead of Python
+  .\install.ps1 -LegacyPowerShellHooks   # DEPRECATED - PS hooks instead of Python
 #>
 param(
     [ValidateSet('Grok', 'Claude', 'Both')]
@@ -24,7 +24,10 @@ param(
     [switch]$Force,
     [switch]$EnableDaemon,
     [switch]$AutoStartDaemon,
+
+    # DEPRECATED: Windows PowerShell hooks. Prefer Python (default).
     [switch]$LegacyPowerShellHooks,
+
     [string]$Python = ''
 )
 
@@ -77,15 +80,20 @@ function Install-Shared {
     Ensure-Dir (Join-Path $AiTtsHome 'scripts')
     Ensure-Dir (Join-Path $AiTtsHome 'docs')
 
-    # Legacy PowerShell runtime (fallback)
+    if ($LegacyPowerShellHooks) {
+        Write-Warn2 "LegacyPowerShellHooks is DEPRECATED. Prefer default Python hooks (docs/DEPRECATED_POWERSHELL.md)."
+    }
+
+    # DEPRECATED PowerShell runtime (fallback only — do not extend)
     Copy-FileForced (Join-Path $RepoRoot 'src\speak.ps1') (Join-Path $AiTtsHome 'speak.ps1')
     Copy-FileForced (Join-Path $RepoRoot 'src\speak-core.ps1') (Join-Path $AiTtsHome 'speak-core.ps1')
     Copy-FileForced (Join-Path $RepoRoot 'src\common.ps1') (Join-Path $AiTtsHome 'common.ps1')
     Copy-FileForced (Join-Path $RepoRoot 'src\daemon.ps1') (Join-Path $AiTtsHome 'daemon.ps1')
     Copy-FileForced (Join-Path $RepoRoot 'scripts\daemon-start.ps1') (Join-Path $AiTtsHome 'scripts\daemon-start.ps1')
     Copy-FileForced (Join-Path $RepoRoot 'scripts\daemon-stop.ps1') (Join-Path $AiTtsHome 'scripts\daemon-stop.ps1')
+    Write-Ok "PowerShell fallback scripts installed (DEPRECATED)"
 
-    # Python portable package
+    # Python portable package (supported)
     $libDst = Join-Path $AiTtsHome 'lib\ai_tts'
     if (Test-Path $libDst) { Remove-Item $libDst -Recurse -Force }
     Copy-Item -Path (Join-Path $RepoRoot 'src\python\ai_tts') -Destination $libDst -Recurse -Force
@@ -250,7 +258,8 @@ Voice is OFF by default per directory. State under `~/.grok/.tts-dirs/`.
         $template = Get-Content -LiteralPath (Join-Path $hooksSrc 'tts.json.template') -Raw
         $json = $template.Replace('__GROK_HOOKS__', $hooksFwd)
         Set-Content -LiteralPath (Join-Path $hooksDst 'tts.json') -Value $json -Encoding UTF8
-        Write-Ok "hooks/tts.json (PowerShell legacy)"
+        Write-Warn2 "Installing DEPRECATED PowerShell hooks (LegacyPowerShellHooks)"
+        Write-Ok "hooks/tts.json (PowerShell DEPRECATED)"
         Copy-FileForced (Join-Path $RepoRoot 'grok\skills\tts\SKILL.md') (Join-Path $GrokHome 'skills\tts\SKILL.md')
     }
 
@@ -265,6 +274,7 @@ Voice is OFF by default per directory. State under `~/.grok/.tts-dirs/`.
     Write-Host "  4. Smoke:  $AiTtsHome\bin\ai-tts.cmd probe"
     Write-Host "            $AiTtsHome\bin\ai-tts.cmd speak `"Hello from Carina`""
     Write-Host "  5. Optional daemon:  $AiTtsHome\bin\ai-tts.cmd daemon --enable-config"
+    Write-Host "  (PowerShell speak.ps1 / named-pipe daemon are DEPRECATED — use Python.)"
 }
 
 function Install-Claude {

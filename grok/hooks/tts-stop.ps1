@@ -1,4 +1,6 @@
-# Stop: when TTS is on for this directory, speak the last <say>...</say> (Grok Build).
+# [DEPRECATED] Stop hook for Grok Build (PowerShell).
+# Prefer: ai-tts hook-stop --harness grok
+# See docs/DEPRECATED_POWERSHELL.md
 # Uses lastAssistantMessage when available; falls back to Claude-style transcript JSONL.
 
 $ErrorActionPreference = 'SilentlyContinue'
