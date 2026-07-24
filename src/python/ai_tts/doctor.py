@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sys
@@ -158,15 +159,57 @@ def check_path() -> Check:
 
 def check_grok_hooks() -> Check:
     path = Path.home() / ".grok" / "hooks" / "tts.json"
-    if path.is_file():
-        return Check(name="grok_hooks", ok=True, detail=str(path))
-    return Check(
-        name="grok_hooks",
-        ok=False,
-        detail="~/.grok/hooks/tts.json missing",
-        hint="Re-run: ./install.sh Grok   (or install.ps1 -Target Grok)",
-        critical=False,
-    )
+    if not path.is_file():
+        return Check(
+            name="grok_hooks",
+            ok=False,
+            detail="~/.grok/hooks/tts.json missing",
+            hint="Re-run: ./install.sh Grok   (or install.ps1 -Target Grok)",
+            critical=False,
+        )
+    try:
+        raw = path.read_bytes()
+    except OSError as e:
+        return Check(
+            name="grok_hooks",
+            ok=False,
+            detail=f"cannot read {path}: {e}",
+            critical=False,
+        )
+    has_bom = raw.startswith(b"\xef\xbb\xbf")
+    try:
+        text = raw.decode("utf-8-sig")
+        data = json.loads(text)
+    except (UnicodeDecodeError, json.JSONDecodeError) as e:
+        return Check(
+            name="grok_hooks",
+            ok=False,
+            detail=f"tts.json invalid JSON: {e}",
+            hint="Re-run install.ps1 -Target Grok (writes UTF-8 without BOM)",
+            critical=False,
+        )
+    blob = text.lower()
+    if "hook-stop" not in blob and "ai-tts" not in blob:
+        return Check(
+            name="grok_hooks",
+            ok=False,
+            detail=f"{path} present but no ai-tts hook-stop command",
+            hint="Re-run install.ps1 -Target Grok",
+            critical=False,
+        )
+    if has_bom:
+        return Check(
+            name="grok_hooks",
+            ok=False,
+            detail=f"{path} has UTF-8 BOM (Grok may ignore hooks)",
+            hint=(
+                "Re-run install.ps1 -Target Grok (fixed no-BOM writer), "
+                "or rewrite tts.json as UTF-8 without BOM"
+            ),
+            critical=False,
+        )
+    _ = data  # parsed successfully
+    return Check(name="grok_hooks", ok=True, detail=str(path))
 
 
 def check_claude_hooks() -> Check:

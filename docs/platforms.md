@@ -153,7 +153,8 @@ Stop hook -> ai-tts hook-stop
                 | no
          stream WS (optional) else REST
                 |
-         play WAV (OS player)
+         stream-while-play PCM (ffplay/winmm/aplay)
+           or buffer WAV (fallback)
 ```
 
 Also: [architecture.md](architecture.md) · [testing.md](testing.md) · [voices.md](voices.md)
@@ -180,7 +181,7 @@ Install one of:
 | 1 Portable one-shot | Done (`speak`, players, installers) |
 | 2 TCP daemon | Done (`daemon` / client) |
 | 3 Tests / doctor / config CLI | Done (unit + smoke + doctor/config/status) |
-| Stream-while-play polish | Future |
+| Stream-while-play polish | Done (WS PCM → play as chunks; `ttfa_ms`; buffer fallback) |
 
 ---
 

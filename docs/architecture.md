@@ -94,8 +94,10 @@ Full list: [README.md](../README.md) · platforms: [platforms.md](platforms.md).
                        ▼
          stream WS (optional) else REST
                        ▼
-                    play WAV
+         stream-while-play PCM (or buffer WAV)
 ```
+
+Stream-while-play starts audio as PCM chunks arrive (see `ttfa_ms` in speak JSON). If no streaming player is available, it buffers then plays a WAV.
 
 Daemon is **optional**. If enabled but not running (and `autoStart` is false), speak falls back to direct. See [daemon.md](daemon.md).
 

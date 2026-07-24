@@ -52,6 +52,14 @@ function Copy-FileForced([string]$src, [string]$dst) {
     Copy-Item -LiteralPath $src -Destination $dst -Force
 }
 
+# Windows PowerShell 5.1 Set-Content -Encoding UTF8 writes a BOM, which breaks
+# strict JSON parsers (e.g. Grok loading ~/.grok/hooks/tts.json). Always use no-BOM.
+function Write-Utf8NoBom([string]$Path, [string]$Content) {
+    Ensure-Dir (Split-Path -Parent $Path)
+    $enc = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($Path, $Content, $enc)
+}
+
 function Resolve-Python {
     if ($Python) { return $Python }
     foreach ($c in @('python', 'py', 'python3')) {
@@ -189,7 +197,7 @@ function Install-Shared {
                 sampleRate               = 24000
             }
         }
-        ($cfg | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $cfgPath -Encoding UTF8
+        Write-Utf8NoBom $cfgPath (($cfg | ConvertTo-Json -Depth 6) + "`n")
         Write-Ok "Wrote config.json (voice=$Voice mode=$mode)"
     } else {
         Write-Warn2 "config.json exists (use -Force to overwrite). Keeping existing."
@@ -246,8 +254,8 @@ function Install-Grok {
   }
 }
 "@
-        Set-Content -LiteralPath (Join-Path $hooksDst 'tts.json') -Value $json -Encoding UTF8
-        Write-Ok "hooks/tts.json (Python)"
+        Write-Utf8NoBom (Join-Path $hooksDst 'tts.json') $json
+        Write-Ok "hooks/tts.json (Python, UTF-8 no BOM)"
 
         $skill = @'
 ---
@@ -269,14 +277,14 @@ Then report ON/OFF in one short line.
 
 Voice is OFF by default per directory. State under `~/.grok/.tts-dirs/`.
 '@
-        Set-Content -LiteralPath (Join-Path $GrokHome 'skills\tts\SKILL.md') -Value $skill -Encoding UTF8
+        Write-Utf8NoBom (Join-Path $GrokHome 'skills\tts\SKILL.md') $skill
     } else {
         $hooksFwd = ($hooksDst -replace '\\', '/')
         $template = Get-Content -LiteralPath (Join-Path $hooksSrc 'tts.json.template') -Raw
         $json = $template.Replace('__GROK_HOOKS__', $hooksFwd)
-        Set-Content -LiteralPath (Join-Path $hooksDst 'tts.json') -Value $json -Encoding UTF8
+        Write-Utf8NoBom (Join-Path $hooksDst 'tts.json') $json
         Write-Warn2 "Installing DEPRECATED PowerShell hooks (LegacyPowerShellHooks)"
-        Write-Ok "hooks/tts.json (PowerShell DEPRECATED)"
+        Write-Ok "hooks/tts.json (PowerShell DEPRECATED, UTF-8 no BOM)"
         Copy-FileForced (Join-Path $RepoRoot 'grok\skills\tts\SKILL.md') (Join-Path $GrokHome 'skills\tts\SKILL.md')
     }
 
@@ -323,7 +331,7 @@ Run:
 
 Report ON/OFF. When ON, end replies with `<say>...</say>`.
 '@
-        Set-Content -LiteralPath (Join-Path $ClaudeHome 'skills\tts\SKILL.md') -Value $skill -Encoding UTF8
+        Write-Utf8NoBom (Join-Path $ClaudeHome 'skills\tts\SKILL.md') $skill
         $ai = (Get-AiTtsCmd) -replace '\\', '/'
         $snippet = @"
 {
@@ -347,7 +355,7 @@ Report ON/OFF. When ON, end replies with `<say>...</say>`.
   }
 }
 "@
-        Set-Content -LiteralPath (Join-Path $AiTtsHome 'claude-settings.hooks.snippet.json') -Value $snippet -Encoding UTF8
+        Write-Utf8NoBom (Join-Path $AiTtsHome 'claude-settings.hooks.snippet.json') $snippet
     } else {
         Copy-FileForced (Join-Path $RepoRoot 'claude\skills\tts\SKILL.md') (Join-Path $ClaudeHome 'skills\tts\SKILL.md')
     }

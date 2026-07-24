@@ -86,11 +86,27 @@ def test_doctor_cli_passes_with_key_and_player(
     # Grok hooks
     grok_hooks = home / ".grok" / "hooks"
     grok_hooks.mkdir(parents=True, exist_ok=True)
-    (grok_hooks / "tts.json").write_text("{}", encoding="utf-8")
+    (grok_hooks / "tts.json").write_text(
+        '{"hooks":{"Stop":[{"hooks":[{"command":"ai-tts hook-stop --harness grok"}]}]}}',
+        encoding="utf-8",
+    )
     code = main(["doctor"])
     out = capsys.readouterr().out
     assert code == 0, out
     assert "all checks passed" in out or "OK with" in out
+
+
+def test_check_grok_hooks_detects_bom(isolated_home, tmp_path, monkeypatch):
+    from ai_tts.doctor import check_grok_hooks
+
+    home = Path(isolated_home)
+    grok_hooks = home / ".grok" / "hooks"
+    grok_hooks.mkdir(parents=True, exist_ok=True)
+    body = b'{"hooks":{"Stop":[{"hooks":[{"command":"ai-tts.cmd hook-stop"}]}]}}'
+    (grok_hooks / "tts.json").write_bytes(b"\xef\xbb\xbf" + body)
+    c = check_grok_hooks()
+    assert c.ok is False
+    assert "BOM" in c.detail
 
 
 def test_setup_alias(isolated_home, write_config, monkeypatch, capsys):

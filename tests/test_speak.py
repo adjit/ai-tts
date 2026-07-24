@@ -27,6 +27,7 @@ def test_speak_text_rest(monkeypatch, isolated_home, write_config, sample_wav_by
     assert meta["voice"] == "carina"
     assert played and played[0] == sample_wav_bytes
     assert meta["bytes"] == len(sample_wav_bytes)
+    assert "ttfa_ms" in meta
 
 
 def test_speak_text_empty_raises(isolated_home, monkeypatch):
@@ -52,7 +53,7 @@ def test_speak_auto_falls_back_from_stream(
     def boom(*a, **k):
         raise TtsError("stream down")
 
-    monkeypatch.setattr("ai_tts.speak.synthesize_stream", boom)
+    monkeypatch.setattr("ai_tts.speak.stream_and_play", boom)
     monkeypatch.setattr(
         "ai_tts.speak.synthesize_rest",
         lambda *a, **k: sample_wav_bytes,
@@ -61,3 +62,28 @@ def test_speak_auto_falls_back_from_stream(
     meta = speak_text("hi", transport="auto")
     assert meta["transport"] == "rest-fallback"
     assert meta["voice"] == "eve"
+
+
+def test_speak_stream_uses_stream_and_play(monkeypatch, isolated_home, write_config):
+    write_config({"voice": "carina"})
+    monkeypatch.setenv("XAI_API_KEY", "k")
+    monkeypatch.setattr("ai_tts.speak.streaming_available", lambda: True)
+
+    def fake_stream_play(*a, **k):
+        return {
+            "ok": True,
+            "transport": "stream-play",
+            "voice": "carina",
+            "bytes": 4800,
+            "play_mode": "stream",
+            "ttfa_ms": 120,
+            "synth_ms": 800,
+            "play_ms": 0,
+            "ms": 800,
+        }
+
+    monkeypatch.setattr("ai_tts.speak.stream_and_play", fake_stream_play)
+    meta = speak_text("hi there", transport="stream")
+    assert meta["transport"] == "stream-play"
+    assert meta["ttfa_ms"] == 120
+    assert meta["voice"] == "carina"

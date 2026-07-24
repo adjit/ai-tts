@@ -52,7 +52,7 @@ ai-tts config set mode direct     # back to one-shot (after daemon-stop)
 | `daemon.enabled` | `false` | Same as `mode: daemon` when true |
 | `daemon.host` / `port` | `127.0.0.1` / `18765` | TCP listen address |
 | `daemon.autoStart` | `false` | If true and server missing, try start once |
-| `daemon.optimizeStreamingLatency` | `2` | xAI stream tip (`0` quality … `2` fastest) |
+| `daemon.optimizeStreamingLatency` | `2` | xAI stream tip (`0` quality … `2` fastest); used by stream-while-play |
 | `daemon.sampleRate` | `24000` | PCM sample rate |
 | `daemon.pipeName` | `ai-tts` | **Deprecated** Windows named pipe only |
 
@@ -111,7 +111,7 @@ One line request, one line response (UTF-8 JSON) over TCP:
 
 ```text
 -> {"text":"Hello","voice":"carina","language":"en","speed":1.0}
-<- {"ok":true,"ms":850,"voice":"carina","transport":"stream"}
+<- {"ok":true,"ms":850,"voice":"carina","transport":"stream-play","ttfa_ms":200}
 
 -> {"cmd":"ping"}
 <- {"ok":true,"pong":true,"pid":12345}

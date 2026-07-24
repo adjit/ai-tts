@@ -61,7 +61,8 @@ def load_config() -> Config:
     data: dict[str, Any] = {}
     if path.is_file():
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            # utf-8-sig tolerates BOM from Windows PowerShell Set-Content -Encoding UTF8
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
         except (OSError, json.JSONDecodeError):
             data = {}
 
